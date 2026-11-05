@@ -28,6 +28,8 @@ interface BossMemo {
   wind: number;
   mark: Mark | null;
   markGen: number;
+  aura: Mark | null;
+  auraGen: number;
 }
 
 const memos = new Map<number, BossMemo>();
@@ -41,7 +43,7 @@ function memo(em: EnemyManager, i: number): BossMemo {
   const uid = em.uid[i];
   let m = memos.get(uid);
   if (!m) {
-    m = { state: 0, t: 2.5, angle: 0, len: 0, travelled: 0, counter: 0, stage: 0, hitDone: false, chain: 0, enraged: false, volley: 0, fx: 0, wind: 1, mark: null, markGen: 0 };
+    m = { state: 0, t: 2.5, angle: 0, len: 0, travelled: 0, counter: 0, stage: 0, hitDone: false, chain: 0, enraged: false, volley: 0, fx: 0, wind: 1, mark: null, markGen: 0, aura: null, auraGen: 0 };
     memos.set(uid, m);
   }
   return m;
@@ -260,6 +262,7 @@ function crossed(em: EnemyManager, i: number, m: BossMemo, frac: number, bit: nu
 
 export function bullUpdate(em: EnemyManager, i: number, dt: number): boolean {
   const m = memo(em, i);
+  followAura(em, i, m);
   if (passive) return true;
   if (chargeStates(em, i, dt, m, 15, em.dmg[i] * 1.7)) return true;
   switch (m.state) {
@@ -313,6 +316,7 @@ export function bullUpdate(em: EnemyManager, i: number, dt: number): boolean {
 
 export function witchUpdate(em: EnemyManager, i: number, dt: number): boolean {
   const m = memo(em, i);
+  followAura(em, i, m);
   if (passive) return true;
   const p = G.player;
   if (!m.enraged && em.hp[i] < em.maxHp[i] * 0.5) {
@@ -329,8 +333,8 @@ export function witchUpdate(em: EnemyManager, i: number, dt: number): boolean {
       const dx = p.x - em.x[i];
       const dz = p.z - em.z[i];
       const d = Math.hypot(dx, dz) || 1;
-      if (d > 8) steerTo(em, i, dt, p.x, p.z, 1, 5);
-      else if (d < 4.5) {
+      if (d > 6.5) steerTo(em, i, dt, p.x, p.z, 1, 5);
+      else if (d < 3.8) {
         steerTo(em, i, dt, em.x[i] - dx, em.z[i] - dz, 0.8, 5);
         facePlayer(em, i, dt, 6);
       } else {
@@ -433,6 +437,7 @@ export function witchUpdate(em: EnemyManager, i: number, dt: number): boolean {
 
 export function kingUpdate(em: EnemyManager, i: number, dt: number): boolean {
   const m = memo(em, i);
+  followAura(em, i, m);
   if (passive) return true;
   const p = G.player;
   if (!m.enraged && em.hp[i] < em.maxHp[i] * 0.4) {
@@ -520,10 +525,20 @@ export function kingUpdate(em: EnemyManager, i: number, dt: number): boolean {
   }
 }
 
-/** shared boss onSpawn: entrance shockwave + memo */
+const AURA_COLOR: Record<string, string> = { bossBull: "#ff7a2a", bossWitch: "#7dff3a", bossKing: "#ff2f6a" };
+
+/** keep the boss ground ring under its feet */
+function followAura(em: EnemyManager, i: number, m: BossMemo): void {
+  if (m.aura) Marks.move(m.aura, m.auraGen, em.x[i], em.z[i]);
+}
+
+/** shared boss onSpawn: entrance shockwave, memo and ground aura */
 export function bossSpawn(em: EnemyManager, i: number): void {
   const m = memo(em, i);
   m.t = 2.2;
+  const aura = Marks.aura(em.x[i], em.z[i], em.radius[i] * 1.9, em.uid[i], AURA_COLOR[em.def(i).id] ?? "#ff2f6a");
+  m.aura = aura;
+  m.auraGen = aura.gen;
   G.fx.ring(em.x[i], em.z[i], { radius: 5, color: "#ff4f6a", life: 0.8, width: 0.8 });
 }
 

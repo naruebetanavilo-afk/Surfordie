@@ -114,6 +114,11 @@ export class Director {
     }
   }
 
+  /** release the telegraph meshes owned by the enemy side */
+  dispose(): void {
+    Marks.dispose();
+  }
+
   /** HP multiplier for enemies spawned at time t (seconds) */
   hpScale(t: number): number {
     const m = t / 60;

@@ -200,7 +200,7 @@ export const ENEMY_DEFS: EnemyDef[] = [
   {
     id: "bossWitch",
     name: "แม่มดหนองพิษ",
-    hp: 11000,
+    hp: 14000,
     speed: 1.5,
     damage: 14,
     radius: 0.92,
@@ -221,7 +221,7 @@ export const ENEMY_DEFS: EnemyDef[] = [
   {
     id: "bossKing",
     name: "ราชาซากศพ",
-    hp: 28000,
+    hp: 40000,
     speed: 1.9,
     damage: 20,
     radius: 1.05,

@@ -14,6 +14,7 @@ import { G } from "../core/G";
 export const MARK_CIRCLE = 0;
 export const MARK_LANE = 1;
 export const MARK_PUDDLE = 2;
+export const MARK_AURA = 3;
 
 export interface Mark {
   active: boolean;
@@ -67,9 +68,9 @@ void main() {
     float fill = 1.0 - smoothstep(uProgress - 0.015, uProgress, r);
     float front = fill * smoothstep(uProgress - 0.12, uProgress, r);
     float blink = 0.75 + 0.25 * sin(uTime * (10.0 + uProgress * 22.0));
-    a = max(0.16, fill * 0.42 + front * 0.35);
+    a = max(0.24, fill * 0.55 + front * 0.35);
     a = max(a, rim * 0.95 * blink);
-    col = mix(uColor, vec3(1.0, 0.92, 0.85), rim * 0.45 + front * 0.4);
+    col = mix(uColor, vec3(1.0, 0.92, 0.85), rim * 0.2 + front * 0.45);
   } else if (uMode < 1.5) {
     // charge lane: vUv.x across, along = 0 at origin .. 1 at the far end
     float along = 1.0 - vUv.y;
@@ -80,10 +81,10 @@ void main() {
     float chev = fract((along * uSize.y - abs(vUv.x - 0.5) * uSize.x * 0.9) * 0.55 - uTime * 2.5);
     float stripe = smoothstep(0.0, 0.08, chev) * (1.0 - smoothstep(0.4, 0.48, chev));
     float blink = 0.75 + 0.25 * sin(uTime * (10.0 + uProgress * 22.0));
-    a = max(0.14 + stripe * 0.18, fill * (0.38 + stripe * 0.25));
+    a = max(0.2 + stripe * 0.18, fill * (0.5 + stripe * 0.25));
     a = max(a, edge * 0.9 * blink);
-    col = mix(uColor, vec3(1.0, 0.92, 0.85), edge * 0.4 + stripe * fill * 0.3);
-  } else {
+    col = mix(uColor, vec3(1.0, 0.92, 0.85), edge * 0.2 + stripe * fill * 0.3);
+  } else if (uMode < 2.5) {
     // toxic puddle: wobbly blob with bubbles
     vec2 p = vUv * 2.0 - 1.0;
     float ang = atan(p.y, p.x);
@@ -96,13 +97,24 @@ void main() {
     float rim = smoothstep(0.75, 0.95, r);
     a = 0.55 + rim * 0.35;
     col = mix(uColor * 0.65, uColor, rim) + bub * 0.35;
+  } else {
+    // boss aura: pulsing dashed ring that keeps the boss readable in a crowd
+    vec2 p = vUv * 2.0 - 1.0;
+    float r = length(p);
+    if (r > 1.0) discard;
+    float band = smoothstep(0.74, 0.82, r) * (1.0 - smoothstep(0.93, 1.0, r));
+    float ang = atan(p.y, p.x);
+    float dash = step(0.45, fract(ang * 1.909859 + uTime * 0.6));
+    float pulse = 0.7 + 0.3 * sin(uTime * 5.0);
+    a = band * (0.45 + 0.45 * dash) * pulse + (1.0 - r) * 0.18;
+    col = mix(uColor, vec3(1.0), band * dash * 0.35);
   }
   a = clamp(a * uAlpha, 0.0, 1.0);
   gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>
 }`;
 
-const POOL = 40;
+const POOL = 56;
 
 class MarkSystem {
   private pool: Mark[] = [];
@@ -171,13 +183,15 @@ class MarkSystem {
 
   private take(): Mark {
     this.ensure();
-    let best = this.pool[0];
+    let best: Mark | null = null;
+    let bestPuddle: Mark | null = null;
     for (const m of this.pool) {
       if (!m.active) return m;
-      // recycle the mark closest to finishing (puddles first)
-      if (m.t / m.dur > best.t / best.dur) best = m;
+      // recycle the mark closest to finishing, puddles before telegraphs
+      if (m.kind === MARK_PUDDLE && (!bestPuddle || m.t / m.dur > bestPuddle.t / bestPuddle.dur)) bestPuddle = m;
+      if (!best || m.t / m.dur > best.t / best.dur) best = m;
     }
-    return best;
+    return bestPuddle ?? best!;
   }
 
   private setup(m: Mark, kind: number, x: number, z: number, color: string, dur: number, owner: number): Mark {
@@ -202,7 +216,7 @@ class MarkSystem {
   }
 
   /** filling warning circle; fully filled exactly when `dur` elapses */
-  circle(x: number, z: number, r: number, dur: number, owner = 0, color = "#ff3030"): Mark {
+  circle(x: number, z: number, r: number, dur: number, owner = 0, color = "#ff2424"): Mark {
     const m = this.setup(this.take(), MARK_CIRCLE, x, z, color, dur, owner);
     m.r = r;
     m.mat.uniforms.uSize.value.set(r, r);
@@ -211,7 +225,7 @@ class MarkSystem {
   }
 
   /** charge lane starting at (x,z) heading `angle` (atan2(dx,dz)) */
-  lane(x: number, z: number, angle: number, len: number, width: number, dur: number, owner = 0, color = "#ff3030"): Mark {
+  lane(x: number, z: number, angle: number, len: number, width: number, dur: number, owner = 0, color = "#ff2424"): Mark {
     const m = this.setup(this.take(), MARK_LANE, x, z, color, dur, owner);
     m.angle = angle;
     m.len = len;
@@ -227,6 +241,15 @@ class MarkSystem {
     m.r = r;
     m.dmg = dmg;
     m.tick = 0.35;
+    m.mat.uniforms.uSize.value.set(r, r);
+    this.place(m);
+    return m;
+  }
+
+  /** ring that follows a boss until killOwner() (move it every frame) */
+  aura(x: number, z: number, r: number, owner: number, color: string): Mark {
+    const m = this.setup(this.take(), MARK_AURA, x, z, color, 1e9, owner);
+    m.r = r;
     m.mat.uniforms.uSize.value.set(r, r);
     this.place(m);
     return m;
@@ -267,7 +290,7 @@ class MarkSystem {
       mesh.rotation.set(0, m.angle, 0);
       mesh.scale.set(m.r, 1, m.len);
     } else {
-      mesh.position.set(m.x, m.kind === MARK_PUDDLE ? 0.035 : 0.05, m.z);
+      mesh.position.set(m.x, m.kind === MARK_PUDDLE ? 0.035 : m.kind === MARK_AURA ? 0.03 : 0.05, m.z);
       mesh.rotation.set(0, 0, 0);
       mesh.scale.set(m.r, 1, m.r);
     }
@@ -296,6 +319,8 @@ class MarkSystem {
           const rr = m.r * 0.85 + p.radius * 0.5;
           if (dx * dx + dz * dz < rr * rr) p.takeDamage(m.dmg);
         }
+      } else if (m.kind === MARK_AURA) {
+        u.uAlpha.value = Math.min(1, m.t * 2);
       } else {
         u.uProgress.value = k;
         u.uAlpha.value = Math.min(1, m.t * 8);
@@ -306,6 +331,19 @@ class MarkSystem {
 
   clear(): void {
     for (const m of this.pool) this.release(m);
+  }
+
+  /** free GPU resources (the pool is rebuilt lazily if used again) */
+  dispose(): void {
+    for (const m of this.pool) {
+      m.mesh.removeFromParent();
+      m.mat.dispose();
+    }
+    this.discGeo?.dispose();
+    this.laneGeo?.dispose();
+    this.discGeo = this.laneGeo = null;
+    this.pool = [];
+    this.scene = null;
   }
 }
 
