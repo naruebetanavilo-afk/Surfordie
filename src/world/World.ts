@@ -181,7 +181,7 @@ export class World {
     const phi = fov / 2;
     const tanV = Math.tan(phi);
     const tanH = tanV * this.camera.aspect;
-    const zoom = this.zoomCur * this.crowdZoom * (1 - 0.42 * this.menuBlend);
+    const zoom = this.zoomCur * this.crowdZoom * (1 - 0.52 * this.menuBlend);
     const D = Math.max(FRAME_HALF_W / tanH, FRAME_HALF_V / tanV) * zoom;
     this.camDist = D;
     this.camera.near = Math.max(0.5, D * 0.3);

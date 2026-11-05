@@ -447,18 +447,19 @@ export class Player {
     // cape: damped spring that streams back with speed and flaps on each step
     const fdt = Math.min(dt, 1 / 30);
     if (r.cape) {
-      const target = 0.06 + 0.5 * speedN + Math.abs(w) * 0.1 * mb + Math.sin(t * 1.7) * 0.04 + hop * 0.6;
+      const target = 0.06 + 0.4 * speedN + Math.abs(w) * 0.08 * mb + Math.sin(t * 1.7) * 0.04 + hop * 0.5;
       this.capeV += ((target - this.capeA) * 90 - this.capeV * 12) * fdt;
       this.capeA += this.capeV * fdt;
-      r.cape.rotation.x = clamp(this.capeA, 0, 0.85);
-      r.cape.rotation.z = clamp(this.yawVel * 0.06, -0.35, 0.35);
+      // keep the lift modest: from the high camera a near-horizontal cape reads as a flat board
+      r.cape.rotation.x = clamp(this.capeA, 0, 0.62);
+      r.cape.rotation.z = clamp(this.yawVel * 0.04, -0.2, 0.2);
     }
     if (r.capeTip) {
       const flutter = Math.sin(t * 13 + this.walkT) * 0.16 * speedN + Math.sin(t * 2.3) * 0.05;
       const target = (r.cape ? this.capeA * 0.3 : 0) + flutter;
       this.capeTipV += ((target - this.capeTipA) * 70 - this.capeTipV * 9) * fdt;
       this.capeTipA += this.capeTipV * fdt;
-      r.capeTip.rotation.x = clamp(this.capeTipA, -0.1, 0.7);
+      r.capeTip.rotation.x = clamp(this.capeTipA, -0.15, 0.45);
     }
     // floppy hat tip / pom-pom lags behind head motion
     if (r.hatTip) {
