@@ -32,9 +32,10 @@ void main() {
   float streak = 0.65 + 0.35 * sin(vUv.x * 6.2831 * 4.0 + h * 9.0 - vB.y * 14.0 + vB.z * 20.0);
   float body = pow(vFacing, 1.5);
   float a = clamp(fade * streak * body * vB.x, 0.0, 1.0);
-  vec3 c = mix(vColor, vec3(1.0), clamp(vB.w * 0.85 + pow(1.0 - h, 6.0) * 0.6, 0.0, 1.0));
-  gl_FragColor = vec4(c * a, a);
+  vec3 c = mix(vColor, vec3(1.0), clamp(vB.w * 0.8 + pow(1.0 - h, 6.0) * 0.4, 0.0, 1.0));
+  gl_FragColor = vec4(c, 1.0);
   #include <colorspace_fragment>
+  gl_FragColor = vec4(gl_FragColor.rgb * a, a * 0.4);
 }`;
 
 class Beam {
@@ -85,14 +86,14 @@ export class Beams {
       fragmentShader: frag,
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
       premultipliedAlpha: true,
       side: THREE.DoubleSide,
+      forceSinglePass: true,
     });
     this.mesh = new THREE.Mesh(this.geo, this.mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 7;
-    this.mesh.visible = false;
     scene.add(this.mesh);
   }
 
@@ -152,7 +153,6 @@ export class Beams {
       n++;
     }
     this.geo.instanceCount = n;
-    this.mesh.visible = n > 0;
     if (n === 0) return;
     this.aA.clearUpdateRanges();
     this.aA.addUpdateRange(0, n * 4);
@@ -168,7 +168,6 @@ export class Beams {
   clear(): void {
     for (const b of this.beams) b.active = false;
     this.geo.instanceCount = 0;
-    this.mesh.visible = false;
   }
 
   dispose(): void {

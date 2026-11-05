@@ -52,60 +52,68 @@ varying vec2 vP;
 varying vec3 vColor;
 varying float vAlpha;
 varying float vShape;
-float hash(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
 void main() {
   vec2 p = vP;
   float r = length(p);
   if (r > 1.0 && vShape < 2.5) discard;
   float a = 0.0;
+  // occ: background occlusion (0 = pure additive light, 1 = opaque paint)
+  float occ = 0.3;
   vec3 col = vColor;
   if (vShape < 0.5) {
     // glow
     float f = max(0.0, 1.0 - r);
     a = f * f;
-    col = mix(vColor, vec3(1.0), f * f * f * 0.9);
+    col = mix(vColor, vec3(1.0), f * f * f * f * 0.6);
+    occ = 0.35;
   } else if (vShape < 1.5) {
-    // 4-point star: concave diamond (sqrt|x| + sqrt|y| < 1) + halo
+    // 4-point star: concave diamond (sqrt|x| + sqrt|y| < 1) + soft halo
     vec2 q = abs(p);
     float f = sqrt(q.x) + sqrt(q.y);
-    float body = 1.0 - smoothstep(0.78, 1.0, f);
-    float halo = exp(-r * 4.5) * 0.55;
+    float body = 1.0 - smoothstep(0.8, 1.0, f);
+    float halo = exp(-r * 4.0) * 0.5;
     a = max(body, halo);
-    col = mix(vColor, vec3(1.0), (1.0 - smoothstep(0.25, 0.85, f)) * 0.95);
+    float white = (1.0 - smoothstep(0.35, 0.9, f));
+    col = mix(vColor, vec3(1.0), white);
+    occ = body * 0.85;
   } else if (vShape < 2.5) {
     // ring
     float d = abs(r - 0.78);
     a = (1.0 - smoothstep(0.0, 0.16, d)) + exp(-d * 9.0) * 0.35;
     a *= 1.0 - smoothstep(0.95, 1.0, r);
-    col = mix(vColor, vec3(1.0), 1.0 - smoothstep(0.0, 0.05, d));
+    col = mix(vColor, vec3(1.0), (1.0 - smoothstep(0.0, 0.05, d)) * 0.6);
+    occ = 0.45;
   } else if (vShape < 3.5) {
     // flare: thin horizontal streak with a bright centre
     float sx = max(0.0, 1.0 - abs(p.x));
     a = exp(-abs(p.y) * 14.0) * sx * sx + exp(-r * 6.0) * 0.6;
-    col = mix(vColor, vec3(1.0), exp(-abs(p.y) * 30.0) * sx);
+    col = mix(vColor, vec3(1.0), exp(-abs(p.y) * 30.0) * sx * 0.8);
+    occ = 0.2;
   } else if (vShape < 4.5) {
-    // smoke puff: lumpy edge via angular noise
+    // toon smoke puff: soft round blob, lighter on top
     float ang = atan(p.y, p.x);
-    float e = 0.78 + 0.12 * sin(ang * 3.0 + vColor.r * 40.0) + 0.08 * sin(ang * 5.0 + 1.7);
-    a = 1.0 - smoothstep(e - 0.35, e, r);
-    // darker underside, lighter top for a toon volume read
-    col = vColor * (0.75 + 0.45 * smoothstep(-0.6, 0.6, p.y));
+    float e = 0.86 + 0.06 * sin(ang * 4.0) + 0.04 * sin(ang * 7.0 + 1.7);
+    a = 1.0 - smoothstep(e - 0.3, e, r);
+    col = vColor * (0.8 + 0.4 * smoothstep(-0.7, 0.7, p.y));
   } else {
     // starburst rays
     float ang = atan(p.y, p.x);
-    float rays = pow(abs(cos(ang * 4.0)), 6.0);
-    a = (rays * (1.0 - r) * 1.2 + exp(-r * 5.0)) ;
+    float rays = pow(abs(cos(ang * 4.0)), 8.0);
+    a = rays * (1.0 - r) * 1.1 + exp(-r * 6.0) * 0.8;
     a *= 1.0 - smoothstep(0.9, 1.0, r);
-    col = mix(vColor, vec3(1.0), exp(-r * 4.0));
+    col = mix(vColor, vec3(1.0), exp(-r * 6.0) * 0.8);
+    occ = 0.4;
   }
   a = clamp(a * vAlpha, 0.0, 1.0);
   if (a < 0.003) discard;
 #ifdef ADDITIVE
-  gl_FragColor = vec4(col * a, a);
+  gl_FragColor = vec4(col, 1.0);
+  #include <colorspace_fragment>
+  gl_FragColor = vec4(gl_FragColor.rgb * a, a * occ);
 #else
   gl_FragColor = vec4(col, a);
-#endif
   #include <colorspace_fragment>
+#endif
 }`;
 
 /**
@@ -181,10 +189,13 @@ export class SpriteLayer {
       defines: additive ? { ADDITIVE: 1 } : {},
       transparent: true,
       depthWrite: false,
-      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+      // glow layer: premultiplied blending so each shape mixes light + occlusion
+      blending: THREE.NormalBlending,
       premultipliedAlpha: additive,
     });
     this.mesh = new THREE.Mesh(this.geo, this.mat);
+    // stays visible: with instanceCount 0 three.js compiles the program on the
+    // first frame (no mid-game shader hitch) but issues no draw call
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = renderOrder;
     scene.add(this.mesh);
@@ -326,13 +337,11 @@ export class SpriteLayer {
     this.colA.clearUpdateRanges();
     this.colA.addUpdateRange(0, cnt * 3);
     this.colA.needsUpdate = true;
-    this.mesh.visible = this.n > 0;
   }
 
   clear(): void {
     this.n = 0;
     this.geo.instanceCount = 0;
-    this.mesh.visible = false;
   }
 
   dispose(): void {

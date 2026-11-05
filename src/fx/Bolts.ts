@@ -27,13 +27,14 @@ varying vec2 vUv;
 varying vec4 vCol;
 void main() {
   float d = abs(vUv.x);
-  float core = 1.0 - smoothstep(0.14, 0.3, d);
+  float core = 1.0 - smoothstep(0.12, 0.26, d);
   float glow = 1.0 - d;
-  glow = glow * glow * 0.55;
-  vec3 c = mix(vCol.rgb, vec3(1.0), core * 0.92);
+  glow = glow * glow * glow * 0.6;
+  vec3 c = mix(vCol.rgb, vec3(1.0), core * 0.85);
   float a = clamp((core + glow) * vCol.a, 0.0, 1.0);
-  gl_FragColor = vec4(c * a, a);
+  gl_FragColor = vec4(c, 1.0);
   #include <colorspace_fragment>
+  gl_FragColor = vec4(gl_FragColor.rgb * a, a * (0.3 + core * 0.4));
 }`;
 
 class Bolt {
@@ -77,6 +78,7 @@ export class Bolts {
   private mat: THREE.ShaderMaterial;
   readonly mesh: THREE.Mesh;
   activeCount = 0;
+  private warm = 3;
 
   constructor(scene: THREE.Scene) {
     for (let i = 0; i < MAX_BOLTS; i++) this.bolts.push(new Bolt());
@@ -123,14 +125,14 @@ export class Bolts {
       fragmentShader: frag,
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
       premultipliedAlpha: true,
       side: THREE.DoubleSide,
+      forceSinglePass: true,
     });
     this.mesh = new THREE.Mesh(this.geo, this.mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 9;
-    this.mesh.visible = false;
     scene.add(this.mesh);
   }
 
@@ -278,7 +280,7 @@ export class Bolts {
       for (let p = 0; p < PTS; p++) {
         const strip = p < MAIN_PTS ? 0 : 1 + Math.floor((p - MAIN_PTS) / BR_PTS);
         const so = strip * 3;
-        const w = b.w[p] * 3;
+        const w = b.w[p] * 2.4;
         const cx = b.pts[p * 3];
         const cy = b.pts[p * 3 + 1];
         const cz = b.pts[p * 3 + 2];
@@ -303,7 +305,9 @@ export class Bolts {
       n++;
     }
     this.activeCount = n;
-    this.mesh.visible = n > 0;
+    // visible for the first frames even when empty so the shader compiles at boot
+    if (this.warm > 0) this.warm--;
+    this.mesh.visible = n > 0 || this.warm > 0;
     if (n === 0) return;
     this.geo.setDrawRange(0, n * IDX_PER_BOLT);
     this.posA.clearUpdateRanges();

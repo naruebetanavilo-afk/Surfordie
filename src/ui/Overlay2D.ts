@@ -367,9 +367,9 @@ export class Overlay2D {
     const v = Math.max(1, value);
     // big-number emphasis relative to the recent average hit
     this.avgDmg += (v - this.avgDmg) * 0.02;
-    if (!crit && this.activeNums > 120 && v < this.avgDmg * 0.85) return;
+    if (!crit && this.activeNums > 90 && v < this.avgDmg * (this.activeNums > 140 ? 1.3 : 0.9)) return;
     const rel = Math.log2(v / Math.max(1, this.avgDmg));
-    const mag = Math.max(0.82, Math.min(1.55, 0.95 + rel * 0.22));
+    const mag = Math.max(0.85, Math.min(1.4, 0.95 + rel * 0.2));
     const t = this.take();
     t.kind = 0;
     t.crit = crit;
@@ -380,15 +380,15 @@ export class Overlay2D {
     t.rot = crit ? (Math.random() - 0.5) * 0.24 : 0;
     if (crit) {
       t.atlas = this.atlasCrit;
-      t.size = 25 * mag;
-      t.life = 0.95;
-      t.rise = 52;
+      t.size = 22 * mag;
+      t.life = 0.9;
+      t.rise = 50;
       this.encode(t, v, -1, G_BANG);
     } else {
       t.atlas = color ? this.customAtlas(color) : this.atlasNormal;
-      t.size = 17 * mag;
-      t.life = 0.68;
-      t.rise = 34;
+      t.size = 16 * mag;
+      t.life = 0.62;
+      t.rise = 32;
       this.encode(t, v, -1, -1);
     }
   }

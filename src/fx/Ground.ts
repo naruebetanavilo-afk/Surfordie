@@ -54,18 +54,26 @@ void main() {
   float mode = vB.y;
   float inner = vB.w;
   float a = 0.0;
+  // occ: how much the effect hides what is behind it (0 = purely additive glow,
+  // 1 = opaque paint). Saturated colours need some occlusion to survive on a
+  // bright ground.
+  float occ = 0.5;
   vec3 col = vColor;
   if (mode < 0.5) {
     // shockwave ring: soft inner edge, bright crisp outer rim, faint fill
-    float band = smoothstep(inner - 0.1, inner + 0.02, r) * (1.0 - smoothstep(0.94, 1.0, r));
-    float rim = smoothstep(inner, 0.96, r);
-    a = band * (0.2 + 0.9 * rim * rim) + (1.0 - smoothstep(0.0, inner, r)) * vC.x * 0.35;
-    col = mix(vColor, vec3(1.0), smoothstep(0.8, 0.97, r) * band * 0.85);
+    float band = smoothstep(inner - 0.12, inner + 0.03, r) * (1.0 - smoothstep(0.93, 1.0, r));
+    float rim = smoothstep(inner, 0.95, r);
+    float fill = (1.0 - smoothstep(0.0, inner, r)) * vC.x * 0.4;
+    a = band * (0.3 + 0.8 * rim * rim) + fill;
+    float hot = smoothstep(0.84, 0.95, r) * band;
+    col = mix(vColor, vec3(1.0), hot * 0.6);
+    occ = 0.6 - hot * 0.3;
   } else if (mode < 1.5) {
     // flash disc
     float f = 1.0 - r;
-    a = pow(f, 1.4);
-    col = mix(vColor, vec3(1.0), pow(f, 3.0) * 0.9);
+    a = pow(f, 1.3);
+    col = mix(vColor, vec3(1.0), pow(f, 4.0) * 0.55);
+    occ = 0.45;
   } else if (mode < 2.5) {
     // crescent slash: bright leading edge + fading smear behind it
     float arcHalf = vC.x;
@@ -77,33 +85,37 @@ void main() {
     if (behind < -0.03) discard;
     float trail = clamp(1.0 - behind / 0.9, 0.0, 1.0);
     // crescent thickness tapers towards the tail
-    float th = (1.0 - inner) * (0.25 + 0.75 * trail);
+    float th = (1.0 - inner) * (0.2 + 0.8 * trail);
     float mid = 1.0 - th * 0.5;
     float d = abs(r - mid) / (th * 0.5 + 0.001);
-    float band = 1.0 - smoothstep(0.55, 1.0, d);
-    float head = exp(-max(behind, 0.0) * 18.0);
-    float edge = smoothstep(0.55, 0.95, (r - (mid - th * 0.5)) / (th + 0.001));
-    a = band * (trail * trail * 0.95 + head * 0.9) + band * edge * trail * 0.5;
-    col = mix(vColor, vec3(1.0), clamp(head * 0.9 + edge * trail * 0.55, 0.0, 1.0));
+    float band = 1.0 - smoothstep(0.5, 1.0, d);
+    float head = exp(-max(behind, 0.0) * 16.0);
+    float edge = smoothstep(0.6, 0.97, (r - (mid - th * 0.5)) / (th + 0.001));
+    a = band * (trail * trail * 0.9 + head * 0.8) + band * edge * trail * 0.6;
+    float white = clamp(head * 0.75 + edge * trail * 0.65, 0.0, 1.0);
+    col = mix(vColor, vec3(1.0), white);
+    occ = 0.7 - white * 0.3;
   } else if (mode < 3.5) {
-    // vortex: spiral arms rotating with p0, hot centre
+    // vortex: spiral arms rotating with p0, hot centre, dark gaps
     float ang = atan(p.y, p.x);
     float arms = vC.y;
     float s = sin(ang * arms + r * 9.0 - vC.x);
-    float arm = smoothstep(0.15, 1.0, s);
-    float body = (1.0 - smoothstep(0.7, 1.0, r)) * smoothstep(0.02, 0.3, r);
-    float core = pow(1.0 - r, 4.0);
-    a = arm * body * (0.45 + 0.7 * (1.0 - r)) + core * 0.9 + (1.0 - smoothstep(0.85, 1.0, r)) * smoothstep(0.75, 0.9, r) * 0.35;
-    col = mix(vColor, vec3(1.0), clamp(core + arm * pow(1.0 - r, 2.0) * 0.6, 0.0, 1.0));
+    float arm = smoothstep(0.1, 1.0, s);
+    float body = (1.0 - smoothstep(0.72, 1.0, r)) * smoothstep(0.02, 0.3, r);
+    float core = pow(1.0 - r, 5.0);
+    float rimRing = (1.0 - smoothstep(0.88, 1.0, r)) * smoothstep(0.76, 0.9, r);
+    a = arm * body * (0.5 + 0.6 * (1.0 - r)) + core * 0.8 + rimRing * 0.45 + body * 0.15;
+    col = mix(vColor, vec3(1.0), clamp(core * 0.8 + arm * pow(1.0 - r, 3.0) * 0.4, 0.0, 1.0));
+    occ = 0.6;
   } else if (mode < 4.5) {
     // telegraph: thick outline + growing fill + bright fill front
     float prog = vC.x;
     float outline = smoothstep(0.86, 0.9, r) * (1.0 - smoothstep(0.97, 1.0, r));
     float fill = 1.0 - step(prog, r);
-    float front = fill * smoothstep(prog - 0.08, prog, r);
+    float front = fill * smoothstep(prog - 0.1, prog, r);
     float pulse = 0.85 + 0.15 * sin(vC.y);
-    a = (outline * 0.95 + 0.14 + fill * 0.28 + front * 0.55) * pulse;
-    col = mix(vColor, vec3(1.0), front * 0.4 + outline * 0.15);
+    a = (outline * 0.95 + 0.2 + fill * 0.32 + front * 0.45) * pulse;
+    col = mix(vColor, vec3(1.0), front * 0.35 + outline * 0.1);
   } else if (mode < 5.5) {
     // goo splat: lumpy blob + satellite droplets
     float seed = vC.w;
@@ -127,31 +139,40 @@ void main() {
     col = mix(col, vec3(1.0), hl * 0.35 * body);
     a = m;
   } else if (mode < 6.5) {
-    // scorch: dark burnt disc with ragged edge + faint ember rim
+    // scorch: soft burnt disc, mottled by value noise
     float seed = vC.w;
-    float ang = atan(p.y, p.x);
-    float e = 0.78 + 0.1 * sin(ang * 7.0 + seed * 5.0) + 0.06 * sin(ang * 13.0 + seed * 11.0);
-    a = (1.0 - smoothstep(e - 0.35, e, r)) * (0.55 + 0.45 * (1.0 - r));
-    col = vColor;
+    vec2 q = p * 3.5 + seed * 17.0;
+    vec2 i0 = floor(q);
+    vec2 f0 = fract(q);
+    vec2 u = f0 * f0 * (3.0 - 2.0 * f0);
+    float n = mix(mix(fract(sin(dot(i0, vec2(12.9898, 78.233))) * 43758.5453), fract(sin(dot(i0 + vec2(1.0, 0.0), vec2(12.9898, 78.233))) * 43758.5453), u.x),
+                  mix(fract(sin(dot(i0 + vec2(0.0, 1.0), vec2(12.9898, 78.233))) * 43758.5453), fract(sin(dot(i0 + vec2(1.0, 1.0), vec2(12.9898, 78.233))) * 43758.5453), u.x), u.y);
+    float e = 0.72 + 0.22 * n;
+    a = (1.0 - smoothstep(0.15, e, r)) * (0.55 + 0.45 * n);
+    col = vColor * (0.7 + 0.6 * n);
   } else {
-    // rune circle: two rings + rotating ticks
+    // rune circle: two rings + rotating ticks + inner triangle
     float ang = atan(p.y, p.x) + vC.x;
     float ring1 = 1.0 - smoothstep(0.0, 0.035, abs(r - 0.92));
     float ring2 = 1.0 - smoothstep(0.0, 0.025, abs(r - 0.7));
-    float ticks = step(0.75, fract(ang / (2.0 * PI) * 12.0)) * step(0.74, r) * step(r, 0.88);
+    float ticks = step(0.86, fract(ang / (2.0 * PI) * 16.0)) * step(0.77, r) * step(r, 0.86);
     float tri = step(abs(fract(ang / (2.0 * PI) * 3.0) - 0.5) * 2.0, 1.0 - (r - 0.1) / 0.6) * step(0.1, r) * step(r, 0.7);
     float triEdge = tri * (1.0 - smoothstep(0.0, 0.06, (1.0 - (r - 0.1) / 0.6) - abs(fract(ang / (2.0 * PI) * 3.0) - 0.5) * 2.0));
-    a = ring1 + ring2 * 0.8 + ticks * 0.7 + triEdge * 0.6 + (1.0 - r) * 0.12;
-    col = mix(vColor, vec3(1.0), ring1 * 0.5);
+    a = ring1 + ring2 * 0.8 + ticks * 0.7 + triEdge * 0.6 + (1.0 - r) * 0.15;
+    col = mix(vColor, vec3(1.0), ring1 * 0.35);
+    occ = 0.55;
   }
   a = clamp(a * vB.z, 0.0, 1.0);
   if (a < 0.003) discard;
 #ifdef ADDITIVE
-  gl_FragColor = vec4(col * a, a);
+  // premultiplied "glow-over": rgb added, background dimmed by a * occ
+  gl_FragColor = vec4(col, 1.0);
+  #include <colorspace_fragment>
+  gl_FragColor = vec4(gl_FragColor.rgb * a, a * occ);
 #else
   gl_FragColor = vec4(col, a);
-#endif
   #include <colorspace_fragment>
+#endif
 }`;
 
 /** one pooled ground effect; fields are driven by Fx each frame */
@@ -231,7 +252,9 @@ export class GroundLayer {
       defines: additive ? { ADDITIVE: 1 } : {},
       transparent: true,
       depthWrite: false,
-      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+      // glow layers use premultiplied blending (ONE, ONE_MINUS_SRC_ALPHA) so each
+      // fragment can choose between additive light and occluding colour
+      blending: THREE.NormalBlending,
       premultipliedAlpha: additive,
     });
     this.mesh = new THREE.Mesh(this.geo, this.mat);
@@ -335,13 +358,11 @@ export class GroundLayer {
     this.aCol.clearUpdateRanges();
     this.aCol.addUpdateRange(0, cnt * 3);
     this.aCol.needsUpdate = true;
-    this.mesh.visible = n > 0;
   }
 
   clear(): void {
     for (const it of this.items) it.active = false;
     this.geo.instanceCount = 0;
-    this.mesh.visible = false;
   }
 
   dispose(): void {

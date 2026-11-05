@@ -54,9 +54,11 @@ void main() {
   vec4 t = texture2D(uTex, gl_PointCoord);
   float a = t.a * vAlpha;
   // hot white core so sparks read as light, not paint
-  vec3 c = mix(vColor, vec3(1.0), t.a * t.a * 0.55);
-  gl_FragColor = vec4(c * a, a);
+  vec3 c = mix(vColor, vec3(1.0), t.a * t.a * t.a * 0.5);
+  gl_FragColor = vec4(c, 1.0);
   #include <colorspace_fragment>
+  // premultiplied: mostly additive, slight occlusion keeps colours saturated
+  gl_FragColor = vec4(gl_FragColor.rgb * a, a * 0.35);
 }`;
 
 /** toon-shaded debris blob: dark rim + highlight, so chunks read on any ground */
@@ -119,7 +121,7 @@ class PointPool {
       uniforms: { uScale: { value: 600 }, uTex: { value: glowTexture() } },
       transparent: true,
       depthWrite: false,
-      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+      blending: THREE.NormalBlending,
       premultipliedAlpha: additive,
     });
     this.points = new THREE.Points(this.geo, this.mat);

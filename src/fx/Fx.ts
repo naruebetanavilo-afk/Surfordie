@@ -300,8 +300,8 @@ export class Fx {
     this.bolts.spawn(x1, y1, z1, x2, y2, z2, c, o.width ?? 0.18, o.jitter ?? 0.35, o.life ?? 0.18, Math.max(0, Math.min(3, branches)));
     if (o.impact === false) return;
     const lod = this.lod();
-    this.sprites.spawn(x2, y2 + 0.1, z2, 0, 0, 0, 1.6, 0.6, 0.18, c, 1, Shape.Glow, Curve.Pop);
-    this.sprites.spawn(x2, y2 + 0.15, z2, 0, 0, 0, 0.9, 0.2, 0.14, c, 1, Shape.Star, Curve.Pop, Math.random() * TAU);
+    this.sprites.spawn(x2, y2 + 0.1, z2, 0, 0, 0, 1.1, 0.5, 0.16, c, 0.7, Shape.Glow, Curve.Pop);
+    this.sprites.spawn(x2, y2 + 0.15, z2, 0, 0, 0, 1.0, 0.2, 0.14, c, 1, Shape.Star, Curve.Pop, Math.random() * 0.6);
     const n = Math.round(4 * lod);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * TAU;
@@ -329,7 +329,7 @@ export class Fx {
     const r = Math.max(0.3, o.radius);
     const c = rgb(o.color);
     const lod = this.lod();
-    const hot = mixInto(this.tmpC, c, WHITE, 0.55);
+    const hot = mixInto(this.tmpC, c, WHITE, 0.3);
     // ground: flash + main shockwave + fast thin white ring
     const f = this.groundAdd.take(GMode.Flash, x, 0.08, z, r * 1.25, 0.3, c);
     f.from = 0.5;
@@ -345,8 +345,8 @@ export class Fx {
     this.stepGround(g2, 0);
     // vertical core: big glow + starburst
     const cy = 0.35 + r * 0.3;
-    this.sprites.spawn(x, cy, z, 0, 0.6, 0, r * 2.6, r * 1.4, 0.24, hot, 1, Shape.Glow, Curve.Pop);
-    this.sprites.spawn(x, cy, z, 0, 0, 0, r * 1.9, r * 0.6, 0.16, hot, 0.9, Shape.Burst, Curve.Pop, Math.random() * TAU, 2);
+    this.sprites.spawn(x, cy, z, 0, 0.6, 0, r * 2.3, r * 1.3, 0.24, hot, 0.85, Shape.Glow, Curve.Pop);
+    this.sprites.spawn(x, cy, z, 0, 0, 0, r * 2.0, r * 0.6, 0.16, c, 0.8, Shape.Burst, Curve.Pop, Math.random() * TAU, 2);
     // sparks
     const sparks = Math.round(Math.min(34, 8 + r * 7) * lod * (o.sparks ?? 1));
     for (let i = 0; i < sparks; i++) {
@@ -373,7 +373,7 @@ export class Fx {
         const a = Math.random() * TAU;
         const d = r * Math.random() * 0.55;
         const s = r * (0.45 + Math.random() * 0.3);
-        this.smokeLayer.spawn(x + Math.cos(a) * d, 0.3 + Math.random() * 0.4, z + Math.sin(a) * d, Math.cos(a) * r * 0.7, 0.9 + Math.random() * 0.6, Math.sin(a) * r * 0.7, s * 0.6, s * 1.5, 0.7 + Math.random() * 0.4, sc, 0.6, Shape.Puff, Curve.Grow, Math.random() * TAU, (Math.random() - 0.5) * 1.5, 0, 2.2);
+        this.smokeLayer.spawn(x + Math.cos(a) * d, 0.5 + Math.random() * 0.5, z + Math.sin(a) * d, Math.cos(a) * r * 0.8, 1.8 + Math.random() * 1.2, Math.sin(a) * r * 0.8, s * 0.5, s * 1.3, 0.55 + Math.random() * 0.3, sc, 0.55, Shape.Puff, Curve.Grow, Math.random() * TAU, (Math.random() - 0.5) * 1.5, 0, 1.6);
       }
     }
     if (o.scorch ?? r >= 1.2) {
@@ -392,8 +392,8 @@ export class Fx {
     const n = ++this.sparksThisFrame;
     // during huge multi-hits only every other spark gets the star
     if (n < 24 || (n & 1) === 0) {
-      const tint = mixInto(this.tmpC, c, WHITE, 0.7);
-      this.sprites.spawn(x + (Math.random() - 0.5) * 0.3, y + 0.15, z + (Math.random() - 0.5) * 0.3, 0, 0.4, 0, 0.55 + Math.random() * 0.3, 0.1, 0.17, tint, 1, Shape.Star, Curve.Pop, Math.random() * 0.6 - 0.3);
+      const tint = mixInto(this.tmpC, c, WHITE, 0.35);
+      this.sprites.spawn(x + (Math.random() - 0.5) * 0.3, y + 0.2, z + (Math.random() - 0.5) * 0.3, 0, 0.4, 0, 0.85 + Math.random() * 0.35, 0.15, 0.18, tint, 1, Shape.Star, Curve.Pop, Math.random() * 0.5 - 0.25);
     }
     if (n < 40) {
       const lod = this.lod();
@@ -430,7 +430,7 @@ export class Fx {
     }
     // quick pale pop
     if (!heavy || (n & 3) === 0) {
-      this.sprites.spawn(x, 0.6 * scale, z, 0, 0.5, 0, 1.0 * scale, 0.4 * scale, 0.14, mixInto(this.tmpC, c, WHITE, 0.65), 0.8, Shape.Glow, Curve.Pop);
+      this.sprites.spawn(x, 0.6 * scale, z, 0, 0.5, 0, 0.8 * scale, 0.3 * scale, 0.13, mixInto(this.tmpC, c, WHITE, 0.4), 0.5, Shape.Glow, Curve.Pop);
     }
     // goo splat on the ground
     if (!heavy || (n & 1) === 0) {
