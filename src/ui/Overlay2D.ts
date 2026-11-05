@@ -662,6 +662,8 @@ export class Overlay2D {
     const pt = this.pt;
     const dpr = this.dpr;
     let active = 0;
+    // starbursts are the loudest element: cap them so crit-heavy builds stay readable
+    let bursts = 0;
     // pass 0: normal numbers, pass 1: crits + texts on top
     for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < MAX_NUMS; i++) {
@@ -708,9 +710,10 @@ export class Overlay2D {
         tw *= s;
         if (t.crit) {
           // starburst behind the crit, spinning slowly, fading early
-          const bs = t.size * 2.1 * pop;
-          const ba = Math.max(0, 1 - k * 1.6);
-          if (ba > 0) {
+          const bs = t.size * 1.9 * pop;
+          const ba = Math.max(0, 1 - k * 1.7);
+          if (ba > 0 && bursts < 10) {
+            bursts++;
             const ang = t.rot + tt * 2.2;
             const cs = Math.cos(ang) * dpr;
             const sn = Math.sin(ang) * dpr;
