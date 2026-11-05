@@ -195,7 +195,7 @@ function chargeStates(em: EnemyManager, i: number, dt: number, m: BossMemo, spee
       if (dx * dx + dz * dz < rr * rr) {
         p.takeDamage(dmg);
         m.hitDone = true;
-        G.world.shake(0.5);
+        G.fx.shake(0.5);
       }
     }
     // bulldoze the crowd sideways (module-level callback: no per-frame closure)
@@ -211,7 +211,7 @@ function chargeStates(em: EnemyManager, i: number, dt: number, m: BossMemo, spee
     }
     if (m.travelled >= m.len) {
       G.fx.ring(em.x[i], em.z[i], { radius: 2.4, color: "#ffd08a", life: 0.35, width: 0.5 });
-      G.world.shake(0.3);
+      G.fx.shake(0.3);
       G.audio.sfx("stomp");
       m.state = RECOVER;
       m.t = 0.85;
@@ -258,7 +258,7 @@ function roar(em: EnemyManager, i: number, m: BossMemo): void {
   m.state = ROAR;
   m.t = 1.0;
   G.audio.sfx("bossRoar");
-  G.world.shake(0.4);
+  G.fx.shake(0.4);
   G.fx.ring(em.x[i], em.z[i], { radius: 6, color: "#ff4f6a", life: 0.7, width: 0.8 });
 }
 

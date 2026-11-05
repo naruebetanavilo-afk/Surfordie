@@ -59,7 +59,6 @@ export function baseStats(): PlayerStats {
 
 /** XP required to go from `level` to `level + 1` */
 export function xpToNext(level: number): number {
-  if (level < 20) return Math.floor(5 + (level - 1) * 10 + Math.pow(level, 1.5));
-  if (level < 40) return Math.floor(200 + (level - 20) * 16 + Math.pow(level, 1.6));
-  return Math.floor(560 + (level - 40) * 24 + Math.pow(level, 1.7));
+  // one smooth curve (no jumps between bands): 5, 12, 20, 27 ... ~174 at lv 20, ~420 at lv 40
+  return Math.floor(5 + (level - 1) * 7 + 0.09 * level * level);
 }

@@ -15,6 +15,8 @@ export const MAX_ENEMIES = 1400;
  */
 export class EnemyManager {
   readonly defs: EnemyDef[] = ENEMY_DEFS;
+  /** per-type flag: 1 = flying (separates only from other flyers, passes over the horde) */
+  private readonly flyType = new Uint8Array(ENEMY_DEFS.map((d) => (d.flying ? 1 : 0)));
   /** number of used slots (alive + dying) */
   n = 0;
   private nextUid = 1;
@@ -459,14 +461,16 @@ export class EnemyManager {
   private separate(): void {
     const g = this.grid;
     const n = this.n;
+    const fly = this.flyType;
     for (let i = 0; i < n; i++) {
       if (this.state[i] !== 0) continue;
+      const fi = fly[this.type[i]];
       const xi = this.x[i];
       const zi = this.z[i];
       const ri = this.radius[i];
       const mi = this.mass[i];
       g.query(xi, zi, ri + 1.2, (j) => {
-        if (j <= i || this.state[j] !== 0) return;
+        if (j <= i || this.state[j] !== 0 || fly[this.type[j]] !== fi) return;
         const dx = this.x[j] - xi;
         const dz = this.z[j] - zi;
         const rr = ri + this.radius[j];

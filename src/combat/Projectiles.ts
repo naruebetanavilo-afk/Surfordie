@@ -41,6 +41,11 @@ export interface ProjSpawn {
   scale?: number;
   /** hostile projectiles hurt the player instead of enemies */
   hostile?: boolean;
+  /**
+   * collide with targets (default true). false = purely visual / scripted:
+   * no player or enemy contact checks (e.g. a lobbed glob that only hurts on landing)
+   */
+  contact?: boolean;
   /** if > 0, the same enemy can be hit again after this many seconds */
   rehit?: number;
   /** extra hit options (slow, freeze, colour) */
@@ -70,6 +75,7 @@ export class Proj {
   homing = 0;
   scale = 1;
   hostile = false;
+  contact = true;
   rehit = 0;
   rot = 0;
   hit: HitOpts | undefined;
@@ -142,6 +148,7 @@ export class Projectiles {
     p.homing = s.homing ?? 0;
     p.scale = s.scale ?? 1;
     p.hostile = !!s.hostile;
+    p.contact = s.contact !== false;
     p.rehit = s.rehit ?? 0;
     p.hit = s.hit;
     p.rot = Math.random() * Math.PI * 2;
@@ -203,7 +210,9 @@ export class Projectiles {
         p.x += p.vx * dt;
         p.z += p.vz * dt;
       }
-      if (p.hostile) {
+      if (!p.contact) {
+        // visual / scripted projectile: no collisions
+      } else if (p.hostile) {
         const dx = pl.x - p.x;
         const dz = pl.z - p.z;
         const rr = p.radius + pl.radius;
@@ -219,7 +228,8 @@ export class Projectiles {
           const last = p.hits.get(uid);
           if (last !== undefined && (p.rehit <= 0 || now - last < p.rehit)) return false;
           p.hits.set(uid, now);
-          hitEnemy(i, p.damage, p.source, { kb: p.kb, dirX: p.vx, dirZ: p.vz, ...p.hit });
+          // zero-damage projectiles may still trigger onHit, but never deal the 1-damage floor
+          if (p.damage > 0) hitEnemy(i, p.damage, p.source, { kb: p.kb, dirX: p.vx, dirZ: p.vz, ...p.hit });
           p.onHit?.(p, i);
           if (p.pierce <= 0) {
             p.alive = false;

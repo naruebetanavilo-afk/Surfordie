@@ -154,9 +154,9 @@ export function lobGoo(x: number, z: number, tx: number, tz: number, o: { damage
   spec.vx = (tx - x) / flight;
   spec.vz = (tz - z) / flight;
   spec.damage = o.damage;
-  // negative radius cancels the player's radius: no mid-air hits, the
-  // splash on landing (gooLand) is the only way the glob can hurt
-  spec.radius = -G.player.radius;
+  // no mid-air hits: the splash on landing (gooLand) is the only way the glob can hurt
+  spec.contact = false;
+  spec.radius = 0;
   spec.life = flight;
   spec.scale = o.scale ?? 1;
   spec.update = gooUpdate;
@@ -195,6 +195,7 @@ export function fireOrb(kind: string, x: number, z: number, angle: number, speed
   spec.vz = Math.cos(angle) * speed;
   spec.damage = damage;
   spec.radius = 0.3 * scale;
+  spec.contact = true;
   spec.life = life;
   spec.scale = scale;
   spec.update = undefined;
@@ -224,7 +225,8 @@ export function warmUpHostile(): void {
     spec.y = -20;
     spec.vx = spec.vz = 0;
     spec.damage = 0;
-    spec.radius = -G.player.radius;
+    spec.radius = 0;
+    spec.contact = false;
     spec.life = 0.1;
     spec.scale = 1;
     spec.update = undefined;
