@@ -2,7 +2,7 @@
 // OfflineAudioContexts used by tests.
 //
 //   sfxIn ─► sfxComp ──────────────────────────────┐
-//   musicIn ─► muffle(LP) ─► duck ─► pause ─► gate ─┴─► sum ─► limiter ─► master ─► out
+//   musicIn ─► muffle(LP) ─► duck ─► pause ─► gate ─┴─► sum ─► HP ─► limiter ─► master ─► out
 //
 // sfxComp glues dense combat together, the limiter stops clipping, `muffle`
 // darkens music on level-up/chest screens, `duck` dips music under stingers,
@@ -29,8 +29,14 @@ export function buildMixer(c: BaseAudioContext): Mixer {
   limiter.release.value = 0.12;
   limiter.connect(master);
 
+  // DC blocker / sub-rumble cut: protects small phone speakers from wasted excursion
+  const hp = c.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 28;
+  hp.Q.value = 0.7;
+  hp.connect(limiter);
   const sum = c.createGain();
-  sum.connect(limiter);
+  sum.connect(hp);
 
   const sfxComp = c.createDynamicsCompressor();
   sfxComp.threshold.value = -20;

@@ -247,7 +247,7 @@ export class AudioSys {
   /** Throttled, voice-limited one-shot sound effect. Safe to call every frame. */
   sfx(name: SfxName, opts?: { vol?: number; pitch?: number }): void {
     const ctx = this.ctx;
-    if (ctx === null || ctx.state !== "running") return;
+    if (ctx === null || ctx.state !== "running" || Meta.data.sfxVol <= 0.001) return;
     const def = SFX[name];
     if (!def) return;
     const st = this.rt[name];

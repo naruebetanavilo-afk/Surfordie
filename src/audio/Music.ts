@@ -383,7 +383,8 @@ export class Music {
     const st = (s & 3) === 2 ? t + this.swing * this.sd : t;
     const d = this.drums;
     let v: number;
-    if ((v = this.kick[s])) this.samp(this.intensity > 0 ? "kickB" : "kick", t, 0.85 * v, 1, d);
+    const boss = this.intensity > 0;
+    if ((v = this.kick[s])) this.samp(boss ? "kickB" : "kick", t, (boss ? 0.66 : 0.85) * v, 1, d);
     if ((v = this.snare[s])) this.samp(this.useClap ? "clap" : "snare", st, 0.5 * v, 0.97 + Math.random() * 0.06, d);
     if ((v = this.hat[s])) this.samp("hat", st, ((s & 3) === 0 ? 0.2 : 0.13) * v, 0.94 + Math.random() * 0.12, d);
     if ((v = this.ohat[s])) this.samp("ohat", st, 0.14 * v, 1, d);
@@ -618,6 +619,9 @@ export class Music {
     src.buffer = buf;
     src.playbackRate.value = rate;
     const g = c.createGain();
+    src.connect(g);
+    g.connect(dest);
+    src.start(t);
     let end = t + buf.duration / rate;
     if (gate > 0 && t + gate < end) {
       g.gain.setValueAtTime(vol, t);
@@ -628,9 +632,6 @@ export class Music {
     } else {
       g.gain.value = vol;
     }
-    src.connect(g);
-    g.connect(dest);
-    src.start(t);
     this.reaper.add(g, end + 0.05);
   }
 
@@ -641,14 +642,14 @@ export class Music {
 
   private playBass(t: number, m: number, dur: number): void {
     const key = this.intensity > 0 ? "bassB" : m >= 44 ? "bassHi" : "bass";
-    const vol = (this.mode === "menu" ? 0.45 : 0.72) * (0.92 + Math.random() * 0.12);
+    const vol = (this.mode === "menu" ? 0.5 : this.intensity > 0 ? 0.42 : 0.72) * (0.92 + Math.random() * 0.12);
     this.pitched(key, t, m, vol, this.bassBus, Math.max(0.06, dur * 0.9));
   }
 
   private playArp(t: number, tone: number): void {
     const menu = this.mode === "menu";
     const key = menu ? "celesta" : "pluck";
-    const vol = (menu ? 0.3 : this.leadKind !== Lead.None ? 0.22 : 0.34) * (0.85 + Math.random() * 0.2);
+    const vol = (menu ? 0.36 : this.leadKind !== Lead.None ? 0.22 : 0.34) * (0.85 + Math.random() * 0.2);
     const notes = this.arpNotes;
     if (tone === 9) {
       for (let i = 0; i < 3; i++) this.pitched(key, t, notes[i], vol * 0.55, this.arpBus);
@@ -744,12 +745,12 @@ export class Music {
     const ch = this.chord;
     if (this.mode === "menu") {
       this.voice(ch, 57, this.padNotes);
-      this.glass(t, dur, 0.07);
+      this.glass(t, dur, 0.09);
       return;
     }
     this.voice(ch, 55, this.padNotes);
     this.organPad(t, dur, this.energy === 0 ? 0.075 : 0.055);
-    if (this.intensity > 0) this.choir(t, dur, 0.08);
+    if (this.intensity > 0) this.choir(t, dur, 0.055);
   }
 
   private organPad(t: number, dur: number, vol: number): void {
