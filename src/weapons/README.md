@@ -35,6 +35,22 @@ use `col("#hex")` (cached, never mutate).
 `WeaponSystem.update` drives the clock (`VFX.begin(dt)` / `VFX.flush()`), so
 effects freeze on level-up / pause and play out in slow motion after a run ends.
 
+## GPU resources & shader prewarm
+
+- Geometries and materials are module-level singletons (lazily created,
+  never disposed). `Weapon.dispose()` only removes the instance's meshes, so a
+  new run reuses the compiled shader programs. If a weapon mutates a shared
+  material (e.g. the evolved colour of the saws), reset it when a new instance
+  is created.
+- `Weapon.prepare()` must create everything the weapon (and its evolution)
+  can draw — lazy meshes, projectile kinds, sprite batches — with no side
+  effects. `src/core/prewarm.ts` calls it on a throw-away instance of every
+  weapon at boot and compiles the whole scene, so no shader compiles mid-run.
+  A new weapon that adds a lazily created mesh must extend `prepare()`.
+- Upload instance buffers with `uploadInstances / uploadItems`
+  (`src/core/gpu.ts`), never a bare `needsUpdate` on a big buffer (that
+  re-uploads the whole capacity every frame).
+
 ## Safety helpers (`util.ts`)
 
 `liveSlot(i)` / `aoeHit(...)` skip stale enemy slots the spatial grid can
