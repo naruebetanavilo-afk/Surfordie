@@ -116,6 +116,57 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+interface AuraRes {
+  ringGeo: THREE.BufferGeometry;
+  wallGeo: THREE.BufferGeometry;
+  ringMat: THREE.ShaderMaterial;
+  wallMat: THREE.ShaderMaterial;
+}
+let res: AuraRes | null = null;
+
+/**
+ * GPU resources shared by every Aura instance (one per run). Never disposed:
+ * a new run reuses the compiled shader programs and uploaded geometry.
+ */
+function auraRes(): AuraRes {
+  if (res) return res;
+  const uni = () => ({
+    uTime: { value: 0 },
+    uEvo: { value: 0 },
+    uFlash: { value: 0 },
+    uS: { value: 2 },
+    uRing: { value: 1.7 },
+    uDeep: { value: new THREE.Color("#a3180a") },
+    uMid: { value: new THREE.Color("#ff6a1a") },
+    uHot: { value: new THREE.Color("#ffd36b") },
+  });
+  const ringMat = new THREE.ShaderMaterial({
+    vertexShader: ringVert,
+    fragmentShader: ringFrag,
+    uniforms: uni(),
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.NormalBlending,
+    premultipliedAlpha: true,
+  });
+  const ringGeo = new THREE.PlaneGeometry(2, 2);
+  ringGeo.rotateX(-Math.PI / 2);
+  const wallMat = new THREE.ShaderMaterial({
+    vertexShader: wallVert,
+    fragmentShader: wallFrag,
+    uniforms: uni(),
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.NormalBlending,
+    premultipliedAlpha: true,
+    side: THREE.DoubleSide,
+  });
+  const wallGeo = new THREE.CylinderGeometry(1, 1, 1, 56, 1, true);
+  wallGeo.translate(0, 0.5, 0);
+  res = { ringGeo, wallGeo, ringMat, wallMat };
+  return res;
+}
+
 class Aura extends Weapon {
   private ring: THREE.Mesh | null = null;
   private wall: THREE.Mesh | null = null;
@@ -146,49 +197,26 @@ class Aura extends Weapon {
 
   private ensure(): void {
     if (this.ring) return;
-    const uni = () => ({
-      uTime: { value: 0 },
-      uEvo: { value: 0 },
-      uFlash: { value: 0 },
-      uS: { value: 2 },
-      uRing: { value: 1.7 },
-      uDeep: { value: new THREE.Color("#a3180a") },
-      uMid: { value: new THREE.Color("#ff6a1a") },
-      uHot: { value: new THREE.Color("#ffd36b") },
-    });
-    this.ringMat = new THREE.ShaderMaterial({
-      vertexShader: ringVert,
-      fragmentShader: ringFrag,
-      uniforms: uni(),
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.NormalBlending,
-      premultipliedAlpha: true,
-    });
-    const rg = new THREE.PlaneGeometry(2, 2);
-    rg.rotateX(-Math.PI / 2);
-    this.ring = new THREE.Mesh(rg, this.ringMat);
+    const r = auraRes();
+    this.ringMat = r.ringMat;
+    this.ring = new THREE.Mesh(r.ringGeo, r.ringMat);
     this.ring.frustumCulled = false;
     this.ring.renderOrder = 3;
-    this.wallMat = new THREE.ShaderMaterial({
-      vertexShader: wallVert,
-      fragmentShader: wallFrag,
-      uniforms: uni(),
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.NormalBlending,
-      premultipliedAlpha: true,
-      side: THREE.DoubleSide,
-    });
-    const wg = new THREE.CylinderGeometry(1, 1, 1, 56, 1, true);
-    wg.translate(0, 0.5, 0);
-    this.wall = new THREE.Mesh(wg, this.wallMat);
+    this.wallMat = r.wallMat;
+    this.wall = new THREE.Mesh(r.wallGeo, r.wallMat);
     this.wall.frustumCulled = false;
     this.wall.renderOrder = 4;
     G.world.scene.add(this.ring, this.wall);
     this.halo = new SpriteBatch(G.world.scene, softGlowTex(), 16, { facing: "camera", additive: false, renderOrder: 9 });
     this.core = new SpriteBatch(G.world.scene, softGlowTex(), 16, { facing: "camera", additive: true, renderOrder: 10 });
+    // the shared materials may still carry the previous run's state
+    this.ringMat.uniforms.uFlash.value = 0;
     this.applyLook();
+  }
+
+  /** create every GPU resource up front (shader prewarm) */
+  prepare(): void {
+    this.ensure();
   }
 
   private applyLook(): void {
@@ -323,16 +351,15 @@ class Aura extends Weapon {
     G.audio.sfx("burn", { vol: 0.8, pitch: 0.7 });
   }
 
+  /** removes the meshes; the shared geometry/materials stay alive for the next run */
   dispose(): void {
     super.dispose();
     if (this.ring) {
       G.world.scene.remove(this.ring, this.wall!);
-      this.ring.geometry.dispose();
-      this.wall!.geometry.dispose();
-      this.ringMat!.dispose();
-      this.wallMat!.dispose();
       this.ring = null;
       this.wall = null;
+      this.ringMat = null;
+      this.wallMat = null;
     }
     this.halo?.dispose();
     this.core?.dispose();

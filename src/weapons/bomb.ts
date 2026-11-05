@@ -108,6 +108,12 @@ class Bomb extends Weapon {
     this.timer = 0.6;
   }
 
+  /** create both sprite batches up front (shader prewarm) */
+  prepare(): void {
+    this.halos();
+    this.sprites();
+  }
+
   /** alpha-blended halo: keeps the orb a saturated magenta over the bright grass */
   private halos(): SpriteBatch {
     if (!this.glowBatch) {

@@ -17,6 +17,7 @@ import { Screens } from "../ui/Screens";
 import { AudioSys } from "../audio/Audio";
 import { WeaponSystem } from "../weapons/WeaponSystem";
 import { WEAPONS } from "../weapons/registry";
+import { prewarmShaders } from "./prewarm";
 
 /**
  * Boots every system, owns the main loop and the run state machine.
@@ -76,6 +77,8 @@ export class Game {
     (window as unknown as { __game: typeof G }).__game = G;
 
     G.player.reset(G.debug.hero ?? Meta.data.lastHero ?? "knight");
+    // compile every shader a run can need now, not mid-run (see prewarm.ts)
+    prewarmShaders();
     if (G.debug.skipMenu) this.startRun(G.debug.hero ?? Meta.data.lastHero ?? "knight");
     else this.toMenu();
 

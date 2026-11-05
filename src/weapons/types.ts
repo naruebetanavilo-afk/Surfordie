@@ -62,8 +62,18 @@ export abstract class Weapon {
   /** called after evolving */
   onEvolve(): void {}
   /**
-   * remove any persistent meshes (new run / back to menu). Subclasses that
-   * override this must call super.dispose() (it drops shared weapon effects).
+   * Create every GPU resource this weapon (base AND evolved form) can ever
+   * draw — lazily created meshes, projectile kinds, sprite batches — without
+   * firing or any other side effect. Used by the boot-time shader prewarm
+   * (src/core/prewarm.ts) so no shader compiles in the middle of a run.
+   */
+  prepare(): void {}
+  /**
+   * Remove this instance's meshes from the scene (new run / back to menu).
+   * Geometries and materials are module-level singletons shared by every
+   * instance: never dispose them here, so the next run reuses the compiled
+   * shader programs. Subclasses that override this must call super.dispose()
+   * (it drops shared weapon effects).
    */
   dispose(): void {
     VFX.clear();

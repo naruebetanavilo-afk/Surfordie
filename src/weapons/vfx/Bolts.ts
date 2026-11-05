@@ -95,6 +95,9 @@ export class Bolts {
       premultipliedAlpha: true,
       side: THREE.DoubleSide,
     });
+    // flat camera-facing ribbons: one double-sided pass looks the same as
+    // three's default back-then-front passes, with half the draw calls
+    mat.forceSinglePass = true;
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 11;

@@ -338,6 +338,11 @@ class MarkSystem {
     for (const m of this.pool) this.release(m);
   }
 
+  /** build the (hidden) mark pool now so the boot-time shader prewarm sees it */
+  prepare(): void {
+    this.ensure();
+  }
+
   /** show one invisible mark for a frame so the shader compiles up front */
   warmUp(x: number, z: number): void {
     this.circle(x, z, 0.01, 0.05);

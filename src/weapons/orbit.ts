@@ -113,6 +113,60 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+interface OrbitRes {
+  sawGeo: THREE.BufferGeometry;
+  sawMat: THREE.MeshToonMaterial;
+  trailGeo: THREE.InstancedBufferGeometry;
+  angleAttr: THREE.InstancedBufferAttribute;
+  trailMat: THREE.ShaderMaterial;
+}
+let res: OrbitRes | null = null;
+
+/**
+ * GPU resources shared by every Orbit instance (one per run). Never disposed:
+ * a new run reuses the compiled shader programs and uploaded geometry.
+ */
+function orbitRes(): OrbitRes {
+  if (res) return res;
+  const sawMat = new THREE.MeshToonMaterial({
+    vertexColors: true,
+    gradientMap: weaponToonRamp(),
+    emissive: new THREE.Color("#1c2230"),
+  });
+  // motion trails: one instanced strip per saw, shaped in the vertex shader
+  const strip = new THREE.PlaneGeometry(1, 2, TRAIL_SEG, 1);
+  strip.translate(0.5, 0, 0);
+  const trailGeo = new THREE.InstancedBufferGeometry();
+  trailGeo.index = strip.index;
+  trailGeo.setAttribute("position", strip.getAttribute("position"));
+  const angleAttr = new THREE.InstancedBufferAttribute(new Float32Array(MAX_SAWS), 1);
+  angleAttr.setUsage(THREE.DynamicDrawUsage);
+  trailGeo.setAttribute("aAngle", angleAttr);
+  trailGeo.instanceCount = 0;
+  const trailMat = new THREE.ShaderMaterial({
+    vertexShader: trailVert,
+    fragmentShader: trailFrag,
+    uniforms: {
+      uCenter: { value: new THREE.Vector3() },
+      uRadius: { value: 2 },
+      uWidth: { value: 0.3 },
+      uArc: { value: 1 },
+      uY: { value: 0.72 },
+      uColor: { value: new THREE.Color("#9fd8ff") },
+      uAlpha: { value: 1 },
+    },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.NormalBlending,
+    premultipliedAlpha: true,
+    side: THREE.DoubleSide,
+  });
+  // flat strip: a single double-sided pass looks identical to back+front passes
+  trailMat.forceSinglePass = true;
+  res = { sawGeo: sawGeometry(), sawMat, trailGeo, angleAttr, trailMat };
+  return res;
+}
+
 class Orbit extends Weapon {
   private mesh: THREE.InstancedMesh;
   private trail: THREE.Mesh;
@@ -147,60 +201,33 @@ class Orbit extends Weapon {
 
   constructor(def: WeaponDef) {
     super(def);
-    const mat = new THREE.MeshToonMaterial({
-      vertexColors: true,
-      gradientMap: weaponToonRamp(),
-      emissive: new THREE.Color("#1c2230"),
-    });
-    this.mesh = new THREE.InstancedMesh(sawGeometry(), mat, MAX_SAWS);
+    const r = orbitRes();
+    this.mesh = new THREE.InstancedMesh(r.sawGeo, r.sawMat, MAX_SAWS);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
     G.world.scene.add(this.mesh);
-
-    // motion trails: one instanced strip per saw, shaped in the vertex shader
-    const strip = new THREE.PlaneGeometry(1, 2, TRAIL_SEG, 1);
-    strip.translate(0.5, 0, 0);
-    const tg = new THREE.InstancedBufferGeometry();
-    tg.index = strip.index;
-    tg.setAttribute("position", strip.getAttribute("position"));
-    this.angleAttr = new THREE.InstancedBufferAttribute(new Float32Array(MAX_SAWS), 1);
-    this.angleAttr.setUsage(THREE.DynamicDrawUsage);
-    tg.setAttribute("aAngle", this.angleAttr);
-    tg.instanceCount = 0;
-    this.trailGeo = tg;
-    this.trailMat = new THREE.ShaderMaterial({
-      vertexShader: trailVert,
-      fragmentShader: trailFrag,
-      uniforms: {
-        uCenter: { value: new THREE.Vector3() },
-        uRadius: { value: 2 },
-        uWidth: { value: 0.3 },
-        uArc: { value: 1 },
-        uY: { value: 0.72 },
-        uColor: { value: new THREE.Color("#9fd8ff") },
-        uAlpha: { value: 1 },
-      },
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.NormalBlending,
-      premultipliedAlpha: true,
-      side: THREE.DoubleSide,
-    });
-    this.trail = new THREE.Mesh(tg, this.trailMat);
+    this.trailGeo = r.trailGeo;
+    this.trailGeo.instanceCount = 0;
+    this.angleAttr = r.angleAttr;
+    this.trailMat = r.trailMat;
+    this.trail = new THREE.Mesh(r.trailGeo, r.trailMat);
     this.trail.frustumCulled = false;
     this.trail.renderOrder = 6;
     G.world.scene.add(this.trail);
+    // the shared material may still carry the previous run's evolved look
+    this.setLook(false);
   }
 
-  private setEvolvedLook(): void {
-    (this.mesh.material as THREE.MeshToonMaterial).color.set("#ff8a96");
-    (this.mesh.material as THREE.MeshToonMaterial).emissive.set("#5a0a14");
-    (this.trailMat.uniforms.uColor.value as THREE.Color).set("#ff4f6a");
+  private setLook(evolved: boolean): void {
+    const m = this.mesh.material as THREE.MeshToonMaterial;
+    m.color.set(evolved ? "#ff8a96" : "#ffffff");
+    m.emissive.set(evolved ? "#5a0a14" : "#1c2230");
+    (this.trailMat.uniforms.uColor.value as THREE.Color).set(evolved ? "#ff4f6a" : "#9fd8ff");
   }
 
   onEvolve(): void {
-    this.setEvolvedLook();
+    this.setLook(true);
   }
 
   update(dt: number): void {
@@ -266,14 +293,12 @@ class Orbit extends Weapon {
     if (this.lastHit.size > 2000) this.lastHit.clear();
   }
 
+  /** removes the meshes; the shared geometry/materials stay alive for the next run */
   dispose(): void {
     super.dispose();
     G.world.scene.remove(this.mesh, this.trail);
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
     this.mesh.dispose();
-    this.trailGeo.dispose();
-    this.trailMat.dispose();
+    this.trailGeo.instanceCount = 0;
   }
 }
 
