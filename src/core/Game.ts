@@ -67,6 +67,10 @@ export class Game {
     document.addEventListener("visibilitychange", () => {
       if (document.hidden && G.state === "playing") this.pause();
     });
+    // desktop: losing window focus clears input, so pause instead of leaving the hero idle
+    window.addEventListener("blur", () => {
+      if (G.state === "playing" && !G.debug.autoplay) this.pause();
+    });
 
     // expose for tests / debugging
     (window as unknown as { __game: typeof G }).__game = G;
@@ -273,7 +277,8 @@ export class Game {
       G.weapons.update(dt);
       G.projectiles.update(dt);
       G.pickups.update(dt);
-      if (G.player.pendingLevels > 0 && !G.player.dead) {
+      // re-check the state: a chest picked up this frame must not be replaced by the level-up
+      if (G.state === "playing" && G.player.pendingLevels > 0 && !G.player.dead) {
         this.levelUpDelay += rawDt;
         if (this.levelUpDelay > 0.15) {
           this.levelUpDelay = 0;
@@ -290,7 +295,7 @@ export class Game {
       G.player.animate(rawDt, false);
     } else if (G.state === "gameover" || G.state === "victory") {
       // let death animations / effects finish in the background
-      G.enemies.update(rawDt * 0.3);
+      G.enemies.update(rawDt * 0.3, false);
     }
     G.fx.update(G.state === "playing" ? G.dt : rawDt * (G.state === "menu" ? 1 : 0.25));
     G.world.update(rawDt, G.player.x, G.player.z);

@@ -79,7 +79,18 @@ export class Director {
     const t = G.time;
     // debug starts (?t=…) skip the events that are already in the past
     this.nextEvent = 0;
-    while (this.nextEvent < EVENTS.length && EVENTS[this.nextEvent].t < t) this.nextEvent++;
+    // with ?boss=… the debug spawn replaces a boss event scheduled at the start time
+    let dbgBoss = false;
+    try {
+      dbgBoss = new URLSearchParams(location.search).has("boss");
+    } catch {
+      dbgBoss = false;
+    }
+    while (
+      this.nextEvent < EVENTS.length &&
+      (EVENTS[this.nextEvent].t < t || (dbgBoss && t > 0 && EVENTS[this.nextEvent].t <= t + 0.01))
+    )
+      this.nextEvent++;
     this.eliteT = Math.max(120, t + 12);
     Marks.clear();
     resetHostile();
@@ -124,7 +135,7 @@ export class Director {
   /** HP multiplier for enemies spawned at time t (seconds) */
   hpScale(t: number): number {
     const m = t / 60;
-    return 1 + m * 0.42 + m * m * 0.058;
+    return 1 + m * 0.42 + m * m * 0.05;
   }
 
   /** contact / projectile damage multiplier at time t */
@@ -290,9 +301,12 @@ export class Director {
 
   private spawnBoss(id: string): void {
     const em = G.enemies;
-    // enter from the top of the screen so the player sees it coming
-    em.spawnPoint(this.tmp, 2, -Math.PI / 2 + (G.rng.next() - 0.5) * 0.8);
-    const i = em.spawn(id, this.tmp.x, this.tmp.z);
+    // enter from the left or right edge at the player's row: the top of the
+    // screen is covered by the HUD, the sides never are
+    const side = G.rng.next() < 0.5 ? 0 : Math.PI;
+    em.spawnPoint(this.tmp, 2, side + (G.rng.next() - 0.5) * 0.6);
+    // bosses scale their damage with time too (a bit gentler than the horde)
+    const i = em.spawn(id, this.tmp.x, this.tmp.z, { dmgMul: 1 + (this.dmgScale(G.time) - 1) * 0.7 });
     if (i < 0) return;
     const def = em.def(i);
     this.bossAlive++;

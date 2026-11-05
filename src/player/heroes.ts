@@ -369,8 +369,9 @@ function buildMage(): THREE.Group {
 
 function buildRanger(): THREE.Group {
   const k = new ModelKit();
-  const green = "#3fa04e";
-  const greenDark = "#2c7d3b";
+  // warm leather tones: a green tunic vanished into the grass and the shambler horde
+  const green = "#d9772b";
+  const greenDark = "#9a4a1c";
   const leather = "#7a4a26";
   const steel = "#e3e9f0";
 
@@ -573,7 +574,7 @@ const rangerPortrait: IconDraw = (c, s) => {
   // scarf
   blob(c, s, "#ffbf2e", () => c.ellipse(s * 0.5, s * 0.95, s * 0.34, s * 0.16, 0, Math.PI, 0));
   // hood back + point
-  blob(c, s, "#2c7d3b", () => {
+  blob(c, s, "#9a4a1c", () => {
     c.moveTo(s * 0.2, s * 0.78);
     c.quadraticCurveTo(s * 0.14, s * 0.3, s * 0.42, s * 0.2);
     c.quadraticCurveTo(s * 0.62, s * 0.06, s * 0.86, s * 0.12);

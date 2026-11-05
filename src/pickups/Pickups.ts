@@ -356,6 +356,8 @@ export class Pickups {
           this.collect(i);
           this.removeAt(i);
           i--;
+          // a chest opened its screen: leave the rest (e.g. a second chest) for after it closes
+          if (G.state !== "playing") break;
         }
       }
     }

@@ -361,7 +361,8 @@ export function witchUpdate(em: EnemyManager, i: number, dt: number): boolean {
         if (pick === 0 || pick === 2) {
           m.state = VOLLEY_WIND;
           m.t = 0.8;
-          setMark(m, Marks.circle(em.x[i], em.z[i], 2.2, 0.8, em.uid[i], "#7dff3a"));
+          // a spinning casting rune, not a filled danger circle: the attack is the orb ring itself
+          G.fx.rune(em.x[i], em.z[i], 2.4, "#7dff3a", 0.8);
           G.audio.sfx("warn");
         } else if (pick === 1) {
           m.state = LOB;

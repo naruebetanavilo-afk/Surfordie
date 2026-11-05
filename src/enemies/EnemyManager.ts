@@ -221,6 +221,8 @@ export class EnemyManager {
   }
 
   freeze(i: number, time: number): void {
+    const def = this.defs[this.type[i]];
+    if (def.ignoreFreeze && def.ignoreFreeze(this, i)) return;
     if (this.isBoss(i)) time *= 0.25;
     this.freezeT[i] = Math.max(this.freezeT[i], time);
   }
@@ -340,7 +342,30 @@ export class EnemyManager {
     out.z = cz + dz * t;
   }
 
-  update(dt: number): void {
+  /**
+   * Advance the horde. `simulate = false` (end screens) only lets death
+   * animations finish: no AI, movement, attacks or player contact.
+   */
+  update(dt: number, simulate = true): void {
+    if (!simulate) {
+      for (let i = 0; i < this.n; i++) {
+        if (this.state[i] === 0) {
+          this.walk[i] = 0;
+          continue;
+        }
+        this.dieT[i] += dt * 2.6;
+        this.flash[i] = Math.max(0, this.flash[i] - dt * 6);
+        if (this.dieT[i] >= 1) this.removeQueue.push(i);
+      }
+      if (this.removeQueue.length) {
+        this.removeQueue.sort((a, b) => b - a);
+        for (const i of this.removeQueue) this.removeAt(i);
+        this.removeQueue.length = 0;
+      }
+      animTime.value = G.time;
+      G.perf.enemies = this.aliveCount;
+      return;
+    }
     const p = G.player;
     const px = p.x;
     const pz = p.z;

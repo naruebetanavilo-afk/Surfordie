@@ -211,6 +211,11 @@ class MarkSystem {
     u.uProgress.value = 0;
     u.uAlpha.value = 0;
     m.mesh.geometry = kind === MARK_LANE ? this.laneGeo! : this.discGeo!;
+    // attack warnings draw over the horde (enemy bodies would otherwise hide most of
+    // the circle/lane); puddles and auras stay depth tested on the ground
+    const tele = kind === MARK_CIRCLE || kind === MARK_LANE;
+    m.mat.depthTest = !tele;
+    m.mesh.renderOrder = tele ? 20 : 3;
     m.mesh.visible = true;
     return m;
   }

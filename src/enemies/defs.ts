@@ -136,6 +136,8 @@ export const ENEMY_DEFS: EnemyDef[] = [
     build: buildBloater,
     update: bloaterUpdate,
     onDeath: bloaterDeath,
+    // once the fuse is lit its warning circle is already counting down: freezing would desync them
+    ignoreFreeze: (em, i) => em.ai0[i] === 1,
   },
   {
     // lurching bandaged undead, sturdier than a shambler
@@ -222,7 +224,7 @@ export const ENEMY_DEFS: EnemyDef[] = [
   {
     id: "bossKing",
     name: "ราชาซากศพ",
-    hp: 40000,
+    hp: 28000,
     speed: 1.9,
     damage: 20,
     radius: 1.05,

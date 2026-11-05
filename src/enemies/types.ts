@@ -36,6 +36,8 @@ export interface EnemyDef {
   coinChance?: number;
   /** flies over the horde: skips crowd separation with other enemies */
   flying?: boolean;
+  /** return true while freeze/stun must be ignored (e.g. an armed fuse whose warning is already showing) */
+  ignoreFreeze?: (em: EnemyManager, i: number) => boolean;
   /**
    * Optional AI hook, called every frame for each living enemy of this type.
    * Return true if you moved the enemy yourself (skips default chase steering).

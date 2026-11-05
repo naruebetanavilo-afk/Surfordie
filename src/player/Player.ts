@@ -20,8 +20,8 @@ function heroGroundTexture(): THREE.Texture {
   g.addColorStop(1, "rgba(0,0,0,0)");
   c.fillStyle = g;
   c.fillRect(0, 0, s, s);
-  c.strokeStyle = "rgba(255,255,255,0.55)";
-  c.lineWidth = s * 0.03;
+  c.strokeStyle = "rgba(255,255,255,0.85)";
+  c.lineWidth = s * 0.045;
   c.beginPath();
   c.arc(h, h, h * 0.86, 0, Math.PI * 2);
   c.stroke();
@@ -72,6 +72,8 @@ export class Player {
   invuln = 0;
   /** contact-damage tick cooldown */
   private hurtCd = 0;
+  /** revives spent this run (stats are rebuilt from scratch on every passive pick) */
+  private revivesUsed = 0;
   /** 0..1 red flash */
   hurtFlash = 0;
   dead = false;
@@ -141,6 +143,7 @@ export class Player {
     this.hurtFlash = 0;
     this.dead = false;
     this.regenAcc = 0;
+    this.revivesUsed = 0;
     this.setModel(this.hero.build());
     this.recalcStats();
     this.hp = this.stats.maxHp;
@@ -217,6 +220,7 @@ export class Player {
     Meta.applyShop(s);
     G.weapons?.applyPassives(s);
     s.cooldown = Math.max(0.25, s.cooldown);
+    s.revives = Math.max(0, s.revives - this.revivesUsed);
     this.stats = s;
     if (s.maxHp > prevMax && this.hp > 0) this.hp += s.maxHp - prevMax;
     this.hp = Math.min(this.hp, s.maxHp);
@@ -250,7 +254,8 @@ export class Player {
   }
 
   takeDamage(amount: number): void {
-    if (this.dead || this.invuln > 0 || G.debug.god) return;
+    // only while playing: the end screens keep the horde animating in the background
+    if (this.dead || this.invuln > 0 || G.debug.god || G.state !== "playing") return;
     const dmg = Math.max(1, amount - this.stats.armor);
     this.hp -= dmg;
     this.hurtFlash = 1;
@@ -261,6 +266,7 @@ export class Player {
     if (this.hp <= 0) {
       if (this.stats.revives > 0) {
         this.stats.revives--;
+        this.revivesUsed++;
         this.hp = this.stats.maxHp * 0.5;
         this.invuln = 3;
         G.fx.ring(this.x, this.z, { radius: 8, color: "#ffe680", life: 0.8, width: 1.2 });

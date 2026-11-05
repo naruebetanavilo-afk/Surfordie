@@ -222,12 +222,44 @@ function defaults(): MetaData {
   };
 }
 
+/**
+ * Merge a parsed save over the defaults, keeping only values whose type matches
+ * the default (a hand-edited or future-schema save must never crash boot).
+ */
+function sanitize(parsed: unknown): MetaData {
+  const d = defaults();
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return d;
+  const src = parsed as Record<string, unknown>;
+  const out = d as unknown as Record<string, unknown>;
+  for (const k of Object.keys(out)) {
+    const def = out[k];
+    const v = src[k];
+    if (v === undefined) continue;
+    if (typeof def === "number") {
+      if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+    } else if (Array.isArray(def)) {
+      if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === "string");
+    } else if (def !== null && typeof def === "object") {
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        const o: Record<string, number> = {};
+        for (const [kk, vv] of Object.entries(v as Record<string, unknown>)) {
+          if (typeof vv === "number" && Number.isFinite(vv)) o[kk] = vv;
+        }
+        out[k] = o;
+      }
+    } else if (typeof v === typeof def) {
+      out[k] = v;
+    }
+  }
+  return d;
+}
+
 export const Meta = {
   data: defaults(),
   load(): void {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) this.data = { ...defaults(), ...JSON.parse(raw) };
+      if (raw) this.data = sanitize(JSON.parse(raw));
     } catch {
       this.data = defaults();
     }
