@@ -1,92 +1,362 @@
 import * as THREE from "three";
+import { kitToonMaterial, mergeVariants } from "./ModelKit";
+import { BIG_PROPS, SMALL_PROPS, buildGrassTuft, type PropDef } from "./DecorProps";
 
 /**
- * Procedural, infinitely tiling scenery (grass tufts, rocks, graves...).
- * Decorations are deterministic per world cell so they never "pop" when you
- * walk back. Purely visual: no collision.
+ * Procedural, infinitely tiling scenery: grass tufts, flowers, mushrooms,
+ * bones, candles, crystals (small) and headstones, crosses, dead trees,
+ * broken fences, lanterns, boulders, stumps (big), plus additive lights and
+ * fireflies. Content is deterministic per world cell (so nothing changes when
+ * you walk back) and grouped into themed zones (meadow / graveyard / grove).
+ * Purely visual: no collision.
  *
- * Core version: scattered grass tufts + small rocks. The environment pass can
- * extend this file freely (keep the public API: constructor(scene), update()).
+ * Draw calls: 4 total (grass, small props, big props, glows). Each props mesh
+ * merges all its variants into one geometry and the vertex shader discards
+ * the vertices that don't belong to an instance's variant.
+ *
+ * The scatter is rebuilt only when the camera crosses a cell boundary and
+ * always covers the conservative view rectangle + margin, so props spawn
+ * outside the screen and never pop in view.
  */
+
+const CELL = 4;
+const MAX_GRASS = 1800;
+const MAX_SMALL = 700;
+const MAX_BIG = 260;
+const MAX_GLOW = 420;
+/** keep the spawn area around the world origin readable */
+const CLEAR_R = 6.5;
+
+type Zone = 0 | 1 | 2; // meadow, graveyard, grove
+
+/** per-zone pick weights, indexed like SMALL_PROPS / BIG_PROPS */
+const SMALL_W: Record<Zone, number[]> = {
+  //      flowers mush bones pebbles clover candles crystals
+  0: [5, 1, 0.3, 2, 4, 0, 0.3],
+  1: [1, 0.8, 3, 1.5, 1.5, 2.5, 0.4],
+  2: [0.6, 4, 1, 1.5, 2, 0.3, 1.6],
+};
+const BIG_W: Record<Zone, number[]> = {
+  //      stone cross tree fence lantern boulder stump
+  0: [0.2, 0.2, 0.6, 1.2, 0.5, 2.5, 1.5],
+  1: [5, 3.5, 0.8, 1.5, 1.4, 0.6, 0.3],
+  2: [0.5, 0.4, 4, 0.8, 0.7, 1.2, 2.5],
+};
+const BIG_P: Record<Zone, number> = { 0: 0.07, 1: 0.24, 2: 0.17 };
+const SMALL_P: Record<Zone, number> = { 0: 0.5, 1: 0.55, 2: 0.6 };
+
+const GRASS_TINTS = ["#ffffff", "#e6f5c8", "#cfe8a8", "#f2ffd8", "#b9dc9a"].map((c) => new THREE.Color(c));
+
+interface Layer {
+  mesh: THREE.InstancedMesh;
+  iVar?: THREE.InstancedBufferAttribute;
+  props?: PropDef[];
+  tints?: THREE.Color[][];
+  n: number;
+  cap: number;
+}
+
+function imul(a: number, b: number): number {
+  return Math.imul(a, b);
+}
+
 export class Decor {
-  private tufts: THREE.InstancedMesh;
-  private rocks: THREE.InstancedMesh;
-  private readonly cell = 4;
-  private readonly maxTufts = 900;
-  private readonly maxRocks = 160;
+  /** shared animation clock for wind sway & glow flicker */
+  readonly time = { value: 0 };
+  private grass: Layer;
+  private small: Layer;
+  private big: Layer;
+  private glow: THREE.InstancedMesh;
+  private glowMode: THREE.InstancedBufferAttribute;
+  private glowN = 0;
   private lastCx = 1e9;
   private lastCz = 1e9;
+  private coveredW = 0;
+  private coveredH = 0;
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
   private s = new THREE.Vector3();
   private p = new THREE.Vector3();
   private e = new THREE.Euler();
+  private v = new THREE.Vector3();
+  private c = new THREE.Color();
+  private readonly scene: THREE.Scene;
 
   constructor(scene: THREE.Scene) {
-    const tuftGeo = new THREE.ConeGeometry(0.12, 0.45, 4, 1);
-    tuftGeo.translate(0, 0.22, 0);
-    const tuftMat = new THREE.MeshLambertMaterial({ color: "#4f8a32" });
-    this.tufts = new THREE.InstancedMesh(tuftGeo, tuftMat, this.maxTufts);
-    this.tufts.frustumCulled = false;
-    this.tufts.count = 0;
-    scene.add(this.tufts);
+    this.scene = scene;
+    // grass: single geometry, wind sway, tinted per instance
+    const grassMesh = new THREE.InstancedMesh(
+      buildGrassTuft(),
+      kitToonMaterial({ wind: 0.16, time: this.time }),
+      MAX_GRASS,
+    );
+    this.grass = this.initLayer(grassMesh, MAX_GRASS);
 
-    const rockGeo = new THREE.DodecahedronGeometry(0.35, 0);
-    rockGeo.translate(0, 0.12, 0);
-    const rockMat = new THREE.MeshLambertMaterial({ color: "#8b8f87", flatShading: true });
-    this.rocks = new THREE.InstancedMesh(rockGeo, rockMat, this.maxRocks);
-    this.rocks.frustumCulled = false;
-    this.rocks.count = 0;
-    scene.add(this.rocks);
+    this.small = this.makePropLayer(SMALL_PROPS, MAX_SMALL, 0.05);
+    this.big = this.makePropLayer(BIG_PROPS, MAX_BIG, 0.012);
+
+    // additive glows (lantern halos, light pools, candle flames, fireflies)
+    const glowGeo = new THREE.PlaneGeometry(1, 1);
+    this.glowMode = new THREE.InstancedBufferAttribute(new Float32Array(MAX_GLOW), 1);
+    this.glowMode.setUsage(THREE.DynamicDrawUsage);
+    glowGeo.setAttribute("iMode", this.glowMode);
+    this.glow = new THREE.InstancedMesh(glowGeo, this.glowMaterial(), MAX_GLOW);
+    this.glow.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.glow.setColorAt(0, this.c.set("#ffffff"));
+    this.glow.frustumCulled = false;
+    this.glow.count = 0;
+    this.glow.renderOrder = 5;
+    scene.add(this.glow);
+  }
+
+  private initLayer(mesh: THREE.InstancedMesh, cap: number): Layer {
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.setColorAt(0, this.c.set("#ffffff"));
+    mesh.frustumCulled = false;
+    mesh.count = 0;
+    this.scene.add(mesh);
+    return { mesh, n: 0, cap };
+  }
+
+  private makePropLayer(props: PropDef[], cap: number, wind: number): Layer {
+    const geo = mergeVariants(props.map((p) => p.build()));
+    const iVar = new THREE.InstancedBufferAttribute(new Float32Array(cap), 1);
+    iVar.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute("iVar", iVar);
+    const mesh = new THREE.InstancedMesh(geo, kitToonMaterial({ variants: true, wind, time: this.time }), cap);
+    const layer = this.initLayer(mesh, cap);
+    layer.iVar = iVar;
+    layer.props = props;
+    layer.tints = props.map((p) => (p.tints ?? ["#ffffff"]).map((t) => new THREE.Color(t)));
+    return layer;
+  }
+
+  private glowMaterial(): THREE.ShaderMaterial {
+    return new THREE.ShaderMaterial({
+      uniforms: { uTime: this.time },
+      vertexShader: /* glsl */ `
+        uniform float uTime;
+        attribute float iMode;
+        varying vec3 vCol;
+        varying vec2 vUv;
+        varying float vA;
+        void main() {
+          vec3 c = instanceMatrix[3].xyz;
+          float s = length(instanceMatrix[0].xyz);
+          #ifdef USE_INSTANCING_COLOR
+            vCol = instanceColor;
+          #else
+            vCol = vec3(1.0);
+          #endif
+          vUv = position.xy * 2.0;
+          vA = 0.82 + 0.18 * sin(uTime * 7.0 + c.x * 3.1 + c.z * 1.7) * sin(uTime * 3.3 + c.z);
+          vec4 mv;
+          if (iMode > 0.5 && iMode < 1.5) {
+            // flat pool of light on the ground
+            mv = viewMatrix * vec4(c + vec3(position.x, 0.0, -position.y) * s, 1.0);
+            vA *= 0.42;
+          } else {
+            if (iMode > 1.5) {
+              // firefly: slow wander + blink
+              float ph = c.x * 1.7 + c.z * 2.3;
+              c += vec3(sin(uTime * 0.8 + ph) * 0.45, sin(uTime * 1.6 + ph * 1.3) * 0.22, cos(uTime * 0.6 + ph) * 0.45);
+              vA = 0.25 + 0.75 * max(0.0, sin(uTime * 2.2 + ph * 3.0));
+            }
+            mv = viewMatrix * vec4(c, 1.0);
+            mv.xy += position.xy * s;
+          }
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: /* glsl */ `
+        varying vec3 vCol;
+        varying vec2 vUv;
+        varying float vA;
+        void main() {
+          float d = dot(vUv, vUv);
+          if (d > 1.0) discard;
+          float a = exp(-d * 4.0) * (1.0 - d);
+          vec3 col = vCol + vec3(1.0, 0.95, 0.8) * exp(-d * 30.0) * 0.8;
+          gl_FragColor = vec4(col, a * vA);
+        }`,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
   }
 
   private hash(x: number, z: number, k: number): number {
-    let h = (x * 374761393 + z * 668265263 + k * 2147483647) | 0;
-    h = (h ^ (h >>> 13)) * 1274126177;
-    h = h ^ (h >>> 16);
-    return (h >>> 0) / 4294967295;
+    let h = imul(x | 0, 374761393) ^ imul(z | 0, 668265263) ^ imul(k | 0, 1274126177);
+    h = imul(h ^ (h >>> 13), 1274126177);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+
+  /** smooth value noise over cell coordinates -> themed zones */
+  private zone(gx: number, gz: number): Zone {
+    const f = 1 / 5;
+    const x = gx * f;
+    const z = gz * f;
+    const ix = Math.floor(x);
+    const iz = Math.floor(z);
+    const fx = x - ix;
+    const fz = z - iz;
+    const ux = fx * fx * (3 - 2 * fx);
+    const uz = fz * fz * (3 - 2 * fz);
+    const a = this.hash(ix, iz, 901);
+    const b = this.hash(ix + 1, iz, 901);
+    const c = this.hash(ix, iz + 1, 901);
+    const d = this.hash(ix + 1, iz + 1, 901);
+    const n = a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
+    return n < 0.4 ? 0 : n < 0.68 ? 1 : 2;
+  }
+
+  private pick(weights: number[], r: number): number {
+    let sum = 0;
+    for (const w of weights) sum += w;
+    let t = r * sum;
+    for (let i = 0; i < weights.length; i++) {
+      t -= weights[i];
+      if (t <= 0) return i;
+    }
+    return weights.length - 1;
+  }
+
+  private pushGlow(x: number, y: number, z: number, size: number, color: string, mode: number): void {
+    if (this.glowN >= MAX_GLOW) return;
+    this.p.set(x, y, z);
+    this.q.identity();
+    this.s.setScalar(size);
+    this.m.compose(this.p, this.q, this.s);
+    this.glow.setMatrixAt(this.glowN, this.m);
+    this.glow.setColorAt(this.glowN, this.c.set(color));
+    this.glowMode.setX(this.glowN, mode);
+    this.glowN++;
+  }
+
+  private placeProp(layer: Layer, v: number, x: number, z: number, gx: number, gz: number, salt: number): void {
+    if (layer.n >= layer.cap || !layer.props || !layer.iVar || !layer.tints) return;
+    const def = layer.props[v];
+    const h = (k: number): number => this.hash(gx, gz, salt + k);
+    const sc = (def.scale[0] + (def.scale[1] - def.scale[0]) * h(1)) * (layer === this.big ? 1.3 : 1.45);
+    const tilt = def.tilt ?? 0;
+    // face mostly towards the camera (+Z) so props read well, with some variety
+    const yaw = (h(2) - 0.5) * (layer === this.big ? 1.6 : Math.PI * 2);
+    this.e.set((h(3) - 0.5) * tilt * 2, yaw, (h(4) - 0.5) * tilt * 2);
+    this.q.setFromEuler(this.e);
+    this.p.set(x, 0, z);
+    this.s.setScalar(sc);
+    this.m.compose(this.p, this.q, this.s);
+    const i = layer.n++;
+    layer.mesh.setMatrixAt(i, this.m);
+    layer.iVar.setX(i, v);
+    const tints = layer.tints[v];
+    layer.mesh.setColorAt(i, tints[Math.floor(h(5) * tints.length) % tints.length]);
+    if (def.glows) {
+      for (const g of def.glows) {
+        this.v.set(g.x, g.y, g.z).applyMatrix4(this.m);
+        this.pushGlow(this.v.x, g.mode === 1 ? 0.04 : this.v.y, this.v.z, g.size * sc, g.color, g.mode);
+      }
+    }
   }
 
   update(cx: number, cz: number, halfW: number, halfH: number): void {
-    const ccx = Math.floor(cx / this.cell);
-    const ccz = Math.floor(cz / this.cell);
-    if (ccx === this.lastCx && ccz === this.lastCz) return;
+    this.time.value = performance.now() / 1000;
+    const ccx = Math.floor(cx / CELL);
+    const ccz = Math.floor(cz / CELL);
+    const grew = halfW > this.coveredW || halfH > this.coveredH;
+    if (ccx === this.lastCx && ccz === this.lastCz && !grew) return;
     this.lastCx = ccx;
     this.lastCz = ccz;
-    const rx = Math.ceil((halfW + 4) / this.cell);
-    const rz = Math.ceil((halfH + 4) / this.cell);
-    let nt = 0;
-    let nr = 0;
+    // cover a bit more than needed so small zoom changes don't force rebuilds
+    this.coveredW = halfW * 1.08;
+    this.coveredH = halfH * 1.08;
+    const rx = Math.ceil((this.coveredW + 3) / CELL) + 1;
+    const rz = Math.ceil((this.coveredH + 3) / CELL) + 1;
+
+    const grass = this.grass;
+    grass.n = 0;
+    this.small.n = 0;
+    this.big.n = 0;
+    this.glowN = 0;
+
     for (let gz = ccz - rz; gz <= ccz + rz; gz++) {
       for (let gx = ccx - rx; gx <= ccx + rx; gx++) {
-        const tuftsHere = Math.floor(this.hash(gx, gz, 1) * 4);
-        for (let k = 0; k < tuftsHere && nt < this.maxTufts; k++) {
-          const x = (gx + this.hash(gx, gz, 10 + k)) * this.cell;
-          const z = (gz + this.hash(gx, gz, 20 + k)) * this.cell;
-          const sc = 0.7 + this.hash(gx, gz, 30 + k) * 0.8;
+        const zone = this.zone(gx, gz);
+        const ox = gx * CELL;
+        const oz = gz * CELL;
+        const nearOrigin = Math.hypot(ox + CELL / 2, oz + CELL / 2) < CLEAR_R;
+
+        // grass tufts (sometimes in small clumps)
+        const tufts = 1 + Math.floor(this.hash(gx, gz, 1) * (zone === 0 ? 5 : 4));
+        for (let k = 0; k < tufts && grass.n < grass.cap; k++) {
+          const x = ox + this.hash(gx, gz, 10 + k) * CELL;
+          const z = oz + this.hash(gx, gz, 20 + k) * CELL;
+          const sc = 0.9 + this.hash(gx, gz, 30 + k) * 0.8;
           this.p.set(x, 0, z);
           this.e.set(0, this.hash(gx, gz, 40 + k) * 6.28, 0);
           this.q.setFromEuler(this.e);
-          this.s.set(sc, sc, sc);
+          this.s.set(sc, sc * (0.8 + this.hash(gx, gz, 45 + k) * 0.5), sc);
           this.m.compose(this.p, this.q, this.s);
-          this.tufts.setMatrixAt(nt++, this.m);
+          grass.mesh.setMatrixAt(grass.n, this.m);
+          grass.mesh.setColorAt(grass.n, GRASS_TINTS[Math.floor(this.hash(gx, gz, 50 + k) * GRASS_TINTS.length)]);
+          grass.n++;
         }
-        if (this.hash(gx, gz, 2) < 0.12 && nr < this.maxRocks) {
-          const x = (gx + this.hash(gx, gz, 50)) * this.cell;
-          const z = (gz + this.hash(gx, gz, 51)) * this.cell;
-          const sc = 0.5 + this.hash(gx, gz, 52) * 0.9;
-          this.p.set(x, 0, z);
-          this.e.set(0, this.hash(gx, gz, 53) * 6.28, 0);
-          this.q.setFromEuler(this.e);
-          this.s.set(sc, sc * 0.7, sc);
-          this.m.compose(this.p, this.q, this.s);
-          this.rocks.setMatrixAt(nr++, this.m);
+
+        // small prop
+        if (this.hash(gx, gz, 2) < SMALL_P[zone] * (nearOrigin ? 0.4 : 1)) {
+          const v = this.pick(SMALL_W[zone], this.hash(gx, gz, 3));
+          const x = ox + (0.1 + this.hash(gx, gz, 4) * 0.8) * CELL;
+          const z = oz + (0.1 + this.hash(gx, gz, 5) * 0.8) * CELL;
+          this.placeProp(this.small, v, x, z, gx, gz, 100);
+        }
+        // occasional second small prop in lush zones
+        if (zone !== 0 && this.hash(gx, gz, 6) < 0.22) {
+          const v = this.pick(SMALL_W[zone], this.hash(gx, gz, 7));
+          const x = ox + (0.1 + this.hash(gx, gz, 8) * 0.8) * CELL;
+          const z = oz + (0.1 + this.hash(gx, gz, 9) * 0.8) * CELL;
+          this.placeProp(this.small, v, x, z, gx, gz, 200);
+        }
+
+        // big prop (one per cell max, kept inside the cell so they never overlap)
+        if (!nearOrigin && this.hash(gx, gz, 60) < BIG_P[zone]) {
+          const v = this.pick(BIG_W[zone], this.hash(gx, gz, 61));
+          const x = ox + (0.2 + this.hash(gx, gz, 62) * 0.6) * CELL;
+          const z = oz + (0.2 + this.hash(gx, gz, 63) * 0.6) * CELL;
+          this.placeProp(this.big, v, x, z, gx, gz, 300);
+        }
+
+        // fireflies in spooky zones
+        if (zone !== 0 && this.hash(gx, gz, 70) < 0.16) {
+          const x = ox + this.hash(gx, gz, 71) * CELL;
+          const z = oz + this.hash(gx, gz, 72) * CELL;
+          const col = zone === 1 ? "#b6ff7a" : "#7affe8";
+          this.pushGlow(x, 0.7 + this.hash(gx, gz, 73) * 0.7, z, 0.32, col, 2);
         }
       }
     }
-    this.tufts.count = nt;
-    this.rocks.count = nr;
-    this.tufts.instanceMatrix.needsUpdate = true;
-    this.rocks.instanceMatrix.needsUpdate = true;
+
+    for (const layer of [this.grass, this.small, this.big]) {
+      layer.mesh.count = layer.n;
+      layer.mesh.instanceMatrix.needsUpdate = true;
+      if (layer.mesh.instanceColor) layer.mesh.instanceColor.needsUpdate = true;
+      if (layer.iVar) layer.iVar.needsUpdate = true;
+    }
+    this.glow.count = this.glowN;
+    this.glow.instanceMatrix.needsUpdate = true;
+    if (this.glow.instanceColor) this.glow.instanceColor.needsUpdate = true;
+    this.glowMode.needsUpdate = true;
+  }
+
+  dispose(): void {
+    for (const layer of [this.grass, this.small, this.big]) {
+      this.scene.remove(layer.mesh);
+      layer.mesh.geometry.dispose();
+      (layer.mesh.material as THREE.Material).dispose();
+      layer.mesh.dispose();
+    }
+    this.scene.remove(this.glow);
+    this.glow.geometry.dispose();
+    (this.glow.material as THREE.Material).dispose();
+    this.glow.dispose();
   }
 }

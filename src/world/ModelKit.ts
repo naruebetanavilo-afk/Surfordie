@@ -233,14 +233,72 @@ function averageNormals(pos: Float32Array, nor: Float32Array, start: number, cou
   }
 }
 
+/**
+ * Merge several kit-built static geometries (position, normal, color, aGlow,
+ * index) into one, tagging every vertex with its variant id (`aVar`). Used
+ * with `kitToonMaterial({ variants: true })` + a per-instance `iVar` attribute
+ * so ONE InstancedMesh can draw many different props (non-matching vertices
+ * are discarded in the vertex shader).
+ */
+export function mergeVariants(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  let nv = 0;
+  let ni = 0;
+  for (const g of geos) {
+    nv += g.getAttribute("position").count;
+    ni += g.index ? g.index.count : 0;
+  }
+  const pos = new Float32Array(nv * 3);
+  const nor = new Float32Array(nv * 3);
+  const col = new Float32Array(nv * 3);
+  const glow = new Float32Array(nv);
+  const vr = new Float32Array(nv);
+  const idx = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
+  let vo = 0;
+  let io = 0;
+  geos.forEach((g, v) => {
+    const n = g.getAttribute("position").count;
+    pos.set((g.getAttribute("position") as THREE.BufferAttribute).array as Float32Array, vo * 3);
+    nor.set((g.getAttribute("normal") as THREE.BufferAttribute).array as Float32Array, vo * 3);
+    col.set((g.getAttribute("color") as THREE.BufferAttribute).array as Float32Array, vo * 3);
+    glow.set((g.getAttribute("aGlow") as THREE.BufferAttribute).array as Float32Array, vo);
+    vr.fill(v, vo, vo + n);
+    const gi = g.index!;
+    for (let i = 0; i < gi.count; i++) idx[io + i] = gi.getX(i) + vo;
+    io += gi.count;
+    vo += n;
+    g.dispose();
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  out.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+  out.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  out.setAttribute("aGlow", new THREE.BufferAttribute(glow, 1));
+  out.setAttribute("aVar", new THREE.BufferAttribute(vr, 1));
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  out.computeBoundingSphere();
+  return out;
+}
+
 // --- materials ---------------------------------------------------------------
+
+export interface KitToonOpts {
+  rim?: number;
+  rimColor?: string;
+  emissive?: string;
+  /** per-instance variant selection (geometry from mergeVariants + InstancedBufferAttribute `iVar`) */
+  variants?: boolean;
+  /** wind sway amplitude (world units per unit of height); needs `time` */
+  wind?: number;
+  /** shared time uniform for wind */
+  time?: { value: number };
+}
 
 /**
  * Vertex-coloured toon material with per-vertex glow (aGlow) and an optional
  * cool fresnel rim light. Works for Mesh, InstancedMesh (instanceColor tints)
  * and SkinnedMesh.
  */
-export function kitToonMaterial(opts: { rim?: number; rimColor?: string; emissive?: string } = {}): THREE.MeshToonMaterial {
+export function kitToonMaterial(opts: KitToonOpts = {}): THREE.MeshToonMaterial {
   const mat = new THREE.MeshToonMaterial({
     vertexColors: true,
     gradientMap: toonGradient(),
@@ -248,12 +306,37 @@ export function kitToonMaterial(opts: { rim?: number; rimColor?: string; emissiv
   });
   const rim = opts.rim ?? 0;
   const rimColor = new THREE.Color(opts.rimColor ?? "#bfe3ff");
+  const variants = !!opts.variants;
+  const wind = opts.wind ?? 0;
+  const time = opts.time ?? { value: 0 };
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uRim = { value: rim };
     shader.uniforms.uRimColor = { value: rimColor };
+    shader.uniforms.uKitTime = time;
+    let pars = "attribute float aGlow;\nvarying float vGlow;\nuniform float uKitTime;";
+    let begin = "vGlow = aGlow;";
+    if (variants) pars += "\nattribute float aVar;\nattribute float iVar;";
+    if (wind > 0) {
+      // sway grows with height; phase from the instance position so neighbours differ
+      begin += `
+#ifdef USE_INSTANCING
+  vec2 kitIp = instanceMatrix[3].xz;
+#else
+  vec2 kitIp = vec2(0.0);
+#endif
+  float kitSw = sin(uKitTime * 1.9 + kitIp.x * 0.7 + kitIp.y * 0.43) + 0.4 * sin(uKitTime * 3.3 + kitIp.x * 1.3);
+  transformed.x += kitSw * ${wind.toFixed(3)} * max(transformed.y, 0.0);
+  transformed.z += kitSw * ${(wind * 0.5).toFixed(3)} * max(transformed.y, 0.0);`;
+    }
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute float aGlow;\nvarying float vGlow;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvGlow = aGlow;");
+      .replace("#include <common>", "#include <common>\n" + pars)
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\n" + begin);
+    if (variants) {
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <project_vertex>",
+        "#include <project_vertex>\nif (abs(aVar - iVar) > 0.5) gl_Position = vec4(0.0, 0.0, -2.0, 1.0);",
+      );
+    }
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "#include <common>",
@@ -272,7 +355,8 @@ export function kitToonMaterial(opts: { rim?: number; rimColor?: string; emissiv
 #include <opaque_fragment>`,
       );
   };
-  mat.customProgramCacheKey = () => "kitToon";
+  const key = `kitToon:${variants ? 1 : 0}:${wind.toFixed(3)}`;
+  mat.customProgramCacheKey = () => key;
   return mat;
 }
 
