@@ -16,6 +16,8 @@ node scripts/smoke.mjs --seconds 20 --params "god=1"   # headless playtest
 Debug URL params: `?skipmenu=1` `autoplay=1` (bot plays, auto-picks upgrades)
 `god=1` (no damage) `fps=1` `t=300` (start at 5:00) `weapons=8` (all weapons at
 level 8) `hero=mage` `seed=7` `quality=low|medium|high`.
+`lineup=1` (frozen parade of every enemy type) `boss=bossBull|bossWitch|bossKing`
+(spawn that boss after 1.5 s) `wtest=bomb,axe&wlv=8&wevo=1` (weapon loadout).
 `window.__game` exposes the global context in the browser.
 
 ## World conventions
@@ -76,6 +78,22 @@ id + pivot); the toon `AnimatedMaterial` animates arms/legs/head/death in the
 vertex shader. One InstancedMesh per type → one draw call per type.
 Custom AI: `def.update(em, i, dt)` (return true if you moved it yourself),
 `def.onDeath`, `def.onSpawn`.
+`def.flying` makes a type separate only from other flyers (passes over the horde).
+`glow(PART.X)` (PartBuilder) marks a part as unlit/glowing (eyes, pustules, gems).
+
+Enemy content modules:
+
+| file | contents |
+|---|---|
+| `src/enemies/models.ts` | PartBuilder models for the 8 regular types + 3 bosses |
+| `src/enemies/defs.ts` | `ENEMY_DEFS` (stats, anim, hooks) |
+| `src/enemies/ai.ts` | shared steering + behaviours. AI registers: `ai0` = mode (`MODE_STAMPEDE = 9`), `ai1` = timer, `ai2/ai3` = extra |
+| `src/enemies/bosses.ts` | boss attack patterns, per-boss state keyed by uid |
+| `src/enemies/hostile.ts` | hostile projectile kinds `sfdGoo` (lobbed, `contact: false`, hurts on landing), `sfdOrbG`, `sfdOrbR` |
+| `src/enemies/marks.ts` | pooled ground markers: warning circles, charge lanes, toxic puddles, boss rings |
+| `src/director/timeline.ts` | ten one-minute phases, events, elites, boss schedule (3:00 / 6:00 / 9:00) |
+
+`Director.hpScale(t)` / `dmgScale(t)` scale enemy stats over time; hard cap 640 alive.
 
 ## Combat
 
@@ -85,7 +103,8 @@ Custom AI: `def.update(em, i, dt)` (return true if you moved it yourself),
 - `hitCircle(x, z, r, base, weaponId, opts)` for AoE.
 - `G.projectiles.registerKind(name, {geometry, material, faceVelocity, spin, tumble, capacity})`
   once, then `G.projectiles.spawn({kind, x, z, y, vx, vz, damage, radius, life, pierce, source, kb, homing, scale, hostile, rehit, hit, update, onHit, onExpire, data})`.
-  `hostile: true` projectiles damage the player.
+  `hostile: true` projectiles damage the player. `contact: false` skips all
+  collisions (scripted/visual projectiles). Zero-damage projectiles never call `hitEnemy`.
 - `G.player.takeDamage(n)`; contact damage is handled by EnemyManager.
 
 ## Weapons & passives
@@ -96,6 +115,9 @@ describe(level), lines(level), evolution {requires: passiveId, name, describe, i
 `duration()`, `projSpeed()`; `evolved` flag; `onLevelUp/onEvolve/dispose`.
 Registry: `src/weapons/registry.ts`. Passives: `src/upgrades/passives.ts`.
 Evolution: weapon at max level + owning the passive → next chest evolves it.
+Weapon-side effect layers (`VFX.sparkles/decals/dark/domes/bolts`, `SpriteBatch`),
+the `liveSlot/aoeHit` helpers and the `?wtest=…&wlv=&wevo=1&wonly=1&wpas=…`
+loadout params are documented in `src/weapons/README.md`.
 
 ## FX
 
@@ -104,7 +126,23 @@ Evolution: weapon at max level + owning the passive → next chest evolves it.
 `lightning(x1, y1, z1, x2, y2, z2, {color, width, jitter})`,
 `burst(x, y, z, {count, color, speed, life, size, gravity, up, additive, dirX, dirZ, spread})`,
 `explosion(x, z, radius, color, shake)`, `hitSpark`, `enemyDeath`,
-`G.fx.particles.emit(...)`, `G.world.shake(amount)`.
+`G.fx.particles.emit(...)`.
+
+Helpers: `explosionEx, vortex, rune, pillar, decal, telegraph, sparkle, glowBall,
+flare, smoke, impact, thorns, bossDeath`; `vortex/rune/decal/telegraph` return a
+handle for `move()/cancel()/alive()`. Game feel: `G.fx.shake(amount)` (respects
+the user's shake setting `G.fx.shakeScale`, localStorage `sfd.shake`),
+`hitStop(seconds, scale)`, `slowMo(seconds, scale)`. Full reference: the JSDoc at
+the top of `src/fx/Fx.ts`. Overlay: `G.overlay.screenFlash(color, strength, time)`.
+
+## Audio
+
+`G.audio.sfx(name, {vol, pitch})` is safe to call every frame (throttled,
+voice-limited, ~1 µs when rejected). `music(on, intensity)`: 0 = run, 1 = boss,
+< 0 = menu theme (also plays automatically while `G.state === "menu"`); repeated
+calls only change intensity. `applySettings()` after changing
+`Meta.data.muted/musicVol/sfxVol`. AudioSys itself plays `bossDie`, `evolve`
+and `nuke` on the matching events — don't play them again. See `src/audio/README.md`.
 
 ## Rules of thumb
 
