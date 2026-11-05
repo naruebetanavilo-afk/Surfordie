@@ -15,7 +15,7 @@ const LOOKAHEAD = 0.2;
 const TICK_MS = 30;
 /** bus levels at volume 1.0 */
 const SFX_LEVEL = 0.9;
-const MUSIC_LEVEL = 0.75;
+const MUSIC_LEVEL = 0.95;
 /** xp pickups climb a minor pentatonic while collected in quick succession */
 const XP_STEPS = [0, 3, 5, 7, 10, 12, 15];
 /** sounds rendered first so the menu / first fight are never silent */
@@ -104,8 +104,12 @@ export class AudioSys {
 
   constructor() {
     for (const n of SFX_NAMES) this.rt[n] = { last: -10, energy: 0, eT: 0 };
-    const unlock = (): void => this.unlock();
-    // capture phase: runs before UI handlers (so a menu click can already make sound)
+    // only real user gestures may start audio (synthetic clicks, e.g. from the
+    // autoplay bot, would just create a blocked context and a console warning).
+    // Capture phase: runs before UI handlers, so a menu click can already make sound.
+    const unlock = (e: Event): void => {
+      if (e.isTrusted) this.unlock();
+    };
     for (const ev of ["pointerdown", "pointerup", "touchend", "keydown", "click"]) this.listen(window, ev, unlock);
     this.listen(document, "visibilitychange", () => this.updateSuspend());
   }

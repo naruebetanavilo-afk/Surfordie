@@ -245,9 +245,20 @@ export class Music {
       n.connect(to);
       return n;
     };
-    const mix = g(out, 1);
+    // tone shaping for small speakers: less sub, more air
+    const low = c.createBiquadFilter();
+    low.type = "lowshelf";
+    low.frequency.value = 120;
+    low.gain.value = -4;
+    const high = c.createBiquadFilter();
+    high.type = "highshelf";
+    high.frequency.value = 3500;
+    high.gain.value = 4;
+    low.connect(high);
+    high.connect(out);
+    const mix = g(low, 1);
     this.drums = g(mix, 0.9);
-    this.bassBus = g(mix, 0.85);
+    this.bassBus = g(mix, 0.7);
     this.arpBus = g(mix, 0.55);
     this.padBus = g(mix, 0.6);
     this.leadBus = g(mix, 0.55);
@@ -384,10 +395,10 @@ export class Music {
     const d = this.drums;
     let v: number;
     const boss = this.intensity > 0;
-    if ((v = this.kick[s])) this.samp(boss ? "kickB" : "kick", t, (boss ? 0.66 : 0.85) * v, 1, d);
-    if ((v = this.snare[s])) this.samp(this.useClap ? "clap" : "snare", st, 0.5 * v, 0.97 + Math.random() * 0.06, d);
-    if ((v = this.hat[s])) this.samp("hat", st, ((s & 3) === 0 ? 0.2 : 0.13) * v, 0.94 + Math.random() * 0.12, d);
-    if ((v = this.ohat[s])) this.samp("ohat", st, 0.14 * v, 1, d);
+    if ((v = this.kick[s])) this.samp(boss ? "kickB" : "kick", t, (boss ? 0.58 : 0.85) * v, 1, d);
+    if ((v = this.snare[s])) this.samp(this.useClap ? "clap" : "snare", st, 0.58 * v, 0.97 + Math.random() * 0.06, d);
+    if ((v = this.hat[s])) this.samp("hat", st, ((s & 3) === 0 ? 0.3 : 0.2) * v, 0.94 + Math.random() * 0.12, d);
+    if ((v = this.ohat[s])) this.samp("ohat", st, 0.2 * v, 1, d);
     if ((v = this.bone[s])) this.samp("bone", st, 0.2 * v, pick(BONE_RATES), d);
     if ((v = this.tomV[s])) this.samp("tom", st, 0.5 * v, this.tomR[s], d);
     if (s === 0 && this.crash) this.samp("crash", t, 0.3, 1, d);
@@ -642,7 +653,7 @@ export class Music {
 
   private playBass(t: number, m: number, dur: number): void {
     const key = this.intensity > 0 ? "bassB" : m >= 44 ? "bassHi" : "bass";
-    const vol = (this.mode === "menu" ? 0.5 : this.intensity > 0 ? 0.42 : 0.72) * (0.92 + Math.random() * 0.12);
+    const vol = (this.mode === "menu" ? 0.5 : this.intensity > 0 ? 0.36 : 0.72) * (0.92 + Math.random() * 0.12);
     this.pitched(key, t, m, vol, this.bassBus, Math.max(0.06, dur * 0.9));
   }
 

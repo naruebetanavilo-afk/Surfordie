@@ -48,8 +48,8 @@ function bassRecipe(v: Voice, f: number, dirty: boolean, dur: number): void {
   const lp = c.createBiquadFilter();
   lp.type = "lowpass";
   lp.Q.value = dirty ? 5 : 3.5;
-  lp.frequency.setValueAtTime(dirty ? 2800 : 1600, t);
-  lp.frequency.setTargetAtTime(dirty ? 650 : 360, t + 0.005, 0.12);
+  lp.frequency.setValueAtTime(dirty ? 3000 : 2200, t);
+  lp.frequency.setTargetAtTime(dirty ? 800 : 560, t + 0.005, 0.12);
   const g = c.createGain();
   adsr(g.gain, t, 1, 0.004, 0.25, 0.65, t + dur - 0.2, 0.025);
   lp.connect(g);
@@ -68,7 +68,7 @@ function bassRecipe(v: Voice, f: number, dirty: boolean, dur: number): void {
   const sub = c.createOscillator();
   sub.frequency.value = f;
   const sg = c.createGain();
-  sg.gain.value = 0.7;
+  sg.gain.value = 0.32;
   sub.connect(sg);
   sg.connect(g);
   sub.start(t);
@@ -77,7 +77,8 @@ function bassRecipe(v: Voice, f: number, dirty: boolean, dur: number): void {
 
 function pluckRecipe(v: Voice, f: number): void {
   // pizzicato / marimba hybrid
-  tone(v, { type: "triangle", f, dur: 0.75, vol: 0.8, a: 0.002, lp: 4000, lp1: 900 });
+  tone(v, { type: "triangle", f, dur: 0.75, vol: 0.8, a: 0.002, lp: 6000, lp1: 1500 });
+  tone(v, { type: "square", f, dur: 0.12, vol: 0.12, a: 0.001, lp: 5000, lp1: 1200 });
   tone(v, { f: f * 2, dur: 0.25, vol: 0.3, a: 0.001 });
   tone(v, { f: f * 4.01, dur: 0.07, vol: 0.12, a: 0.001 });
   noise(v, { type: "bandpass", f: Math.min(f * 6, 12000), dur: 0.015, vol: 0.25, q: 2 });
@@ -97,9 +98,9 @@ export const MUSIC_SAMPLES: Record<string, SampleRecipe> = {
     rate: 24000,
     render(v) {
       const sh = shaper(v.c, v.out, 1.8);
-      tone(v, { f: 165, path: [[0.09, 50]], dur: 0.42, vol: 1, a: 0.0015, to: sh });
-      tone(v, { type: "triangle", f: 330, f1: 100, glide: 0.06, dur: 0.08, vol: 0.35 });
-      noise(v, { type: "highpass", f: 3000, dur: 0.012, vol: 0.4 });
+      tone(v, { f: 165, path: [[0.08, 52]], dur: 0.3, vol: 1, a: 0.0015, to: sh });
+      tone(v, { type: "triangle", f: 330, f1: 110, glide: 0.06, dur: 0.1, vol: 0.45 });
+      noise(v, { type: "highpass", f: 3000, dur: 0.014, vol: 0.5 });
     },
   },
   kickB: {
