@@ -116,8 +116,8 @@ export class Hud {
   // passives iteration without allocating an iterator each frame
   private pIdx = 0;
   private readonly visitPassive = (lvl: number, id: string): void => {
-    if (this.pIdx < PASSIVE_SLOTS) this.setSlot(this.pSlots[this.pIdx], "passive", id, lvl, false);
-    this.pIdx++;
+    const s = this.pSlots[this.pIdx++];
+    if (s) this.setSlot(s, "passive", id, lvl, false);
   };
 
   constructor(ui: HTMLElement) {
@@ -299,14 +299,18 @@ export class Hud {
 
   private updateSlots(): void {
     const ws = G.weapons.weapons;
-    for (let i = 0; i < WEAPON_SLOTS; i++) {
+    // debug loadouts can exceed the normal 6 slots: grow the row on demand
+    while (this.wSlots.length < ws.length) this.wSlots.push(this.makeSlot(this.weaponRow));
+    for (let i = 0; i < this.wSlots.length; i++) {
       const w = ws[i];
       if (w) this.setSlot(this.wSlots[i], "weapon", w.def.id, w.level, w.evolved);
       else this.clearSlot(this.wSlots[i]);
     }
+    const pn = G.weapons.passives.size;
+    while (this.pSlots.length < pn) this.pSlots.push(this.makeSlot(this.passiveRow));
     this.pIdx = 0;
     G.weapons.passives.forEach(this.visitPassive);
-    for (let i = this.pIdx; i < PASSIVE_SLOTS; i++) this.clearSlot(this.pSlots[i]);
+    for (let i = this.pIdx; i < this.pSlots.length; i++) this.clearSlot(this.pSlots[i]);
   }
 
   private clearSlot(s: SlotView): void {
