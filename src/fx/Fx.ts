@@ -411,13 +411,18 @@ export class Fx {
 
   /** composite explosion: flash + rings + core glow + sparks + smoke + scorch + shake */
   explosion(x: number, z: number, radius: number, color: string, shake = 0.25): void {
-    this.explosionEx(x, z, { radius, color, shake });
+    this.explode(x, z, radius, color, shake, radius >= 1.2, true, 1, 0);
   }
 
   /** layered explosion with options (see ExplosionOpts) */
   explosionEx(x: number, z: number, o: ExplosionOpts): void {
-    const r = Math.max(0.3, o.radius);
-    const c = rgb(o.color);
+    this.explode(x, z, o.radius, o.color, o.shake ?? 0.25, o.scorch ?? o.radius >= 1.2, o.smoke !== false, o.sparks ?? 1, o.hitStop ?? 0);
+  }
+
+  /** positional (allocation-free) explosion implementation */
+  private explode(x: number, z: number, radius: number, color: string, shake: number, scorch: boolean, smoke: boolean, sparkMul: number, hitStop: number): void {
+    const r = Math.max(0.3, radius);
+    const c = rgb(color);
     const lod = this.lod();
     const hot = mixInto(this.tmpC, c, WHITE, 0.3);
     // ground: flash + main shockwave + fast thin white ring
@@ -438,7 +443,7 @@ export class Fx {
     this.sprites.spawn(x, cy, z, 0, 0.6, 0, r * 2.3, r * 1.3, 0.24, hot, 0.85, Shape.Glow, Curve.Pop);
     this.sprites.spawn(x, cy, z, 0, 0, 0, r * 2.0, r * 0.6, 0.16, c, 0.8, Shape.Burst, Curve.Pop, Math.random() * TAU, 2);
     // sparks
-    const sparks = Math.round(Math.min(34, 8 + r * 7) * lod * (o.sparks ?? 1));
+    const sparks = Math.round(Math.min(34, 8 + r * 7) * lod * sparkMul);
     for (let i = 0; i < sparks; i++) {
       const a = Math.random() * TAU;
       const sp = r * (2.2 + Math.random() * 3.2);
@@ -453,7 +458,7 @@ export class Fx {
       this.sprites.spawn(x + Math.cos(a) * d, 0.5 + Math.random() * r * 0.5, z + Math.sin(a) * d, Math.cos(a) * 2, 1.5, Math.sin(a) * 2, 0.5 + r * 0.12, 0.05, 0.3, hot, 1, Shape.Star, Curve.Pop, Math.random() * TAU, 3, -3, 1);
     }
     // smoke puffs (dark, tinted)
-    if (o.smoke !== false) {
+    if (smoke) {
       const puffs = Math.round((2 + Math.min(4, r)) * lod);
       const sc = this.tmpC2.copy(c).multiplyScalar(0.18);
       sc.r += 0.05;
@@ -466,14 +471,14 @@ export class Fx {
         this.smokeLayer.spawn(x + Math.cos(a) * d, 0.5 + Math.random() * 0.5, z + Math.sin(a) * d, Math.cos(a) * r * 0.8, 1.8 + Math.random() * 1.2, Math.sin(a) * r * 0.8, s * 0.5, s * 1.3, 0.55 + Math.random() * 0.3, sc, 0.55, Shape.Puff, Curve.Grow, Math.random() * TAU, (Math.random() - 0.5) * 1.5, 0, 1.6);
       }
     }
-    if (o.scorch ?? r >= 1.2) {
+    if (scorch) {
       const d = this.groundDecal.take(GMode.Scorch, x, 0.02, z, r * 0.8, 2.4, mixInto(this.tmpC2, c, this.tmpC2.setRGB(0.02, 0.015, 0.02), 0.85));
       d.rot = Math.random() * TAU;
       d.alpha = 0.7;
       this.stepGround(d, 0);
     }
-    if (o.shake === undefined || o.shake > 0) this.shake(o.shake ?? 0.25);
-    if (o.hitStop) this.hitStop(o.hitStop);
+    if (shake > 0) this.shake(shake);
+    if (hitStop > 0) this.hitStop(hitStop);
   }
 
   /** small impact spark at a hit point: white 4-point star + a few coloured sparks */
@@ -669,10 +674,12 @@ export class Fx {
     this.slowMo(1.1, 0.25);
     this.shake(1.1);
     G.overlay?.screenFlash("#fff6d8", 0.75, 0.45);
-    this.explosionEx(x, z, { radius: 4.5, color, shake: 0, scorch: true, sparks: 1.5 });
+    this.explode(x, z, 3.6, color, 0, true, true, 1.5, 0);
     this.pillar(x, z, color, { radius: 1.6, height: 16, life: 1.5 });
-    this.vortex(x, z, 5, color, 1.4, { spin: 9, arms: 4 });
-    this.rune(x, z, 6.5, color, 1.6, { spin: 2.2 });
+    const v = this.resolve(this.vortex(x, z, 4.2, color, 1.4, { spin: 9, arms: 4 }));
+    if (v) v.alpha = 0.7;
+    const rn = this.resolve(this.rune(x, z, 6.5, color, 1.6, { spin: 2.2 }));
+    if (rn) rn.alpha = 0.75;
     this.flare(x, 1.6, z, 9, color, 0.6);
     this.sprites.spawn(x, 1.5, z, 0, 0, 0, 7, 3, 0.5, WHITE, 1, Shape.Burst, Curve.Pop, 0, 1.2);
     for (let i = 0; i < 18; i++) {
@@ -718,7 +725,13 @@ export class Fx {
   }
 
   private schedule(delay: number, kind: DelayKind, x: number, z: number, r: number, color: string): void {
-    const d = this.delayed.find((q) => !q.active);
+    let d: Delayed | null = null;
+    for (const q of this.delayed) {
+      if (!q.active) {
+        d = q;
+        break;
+      }
+    }
     if (!d) return;
     d.active = true;
     d.t = delay;
@@ -885,7 +898,7 @@ export class Fx {
       d.t -= dt;
       if (d.t > 0) continue;
       d.active = false;
-      if (d.kind === DelayKind.Explosion) this.explosionEx(d.x, d.z, { radius: d.r, color: d.color, shake: 0.35, scorch: true });
+      if (d.kind === DelayKind.Explosion) this.explode(d.x, d.z, d.r, d.color, 0.35, true, true, 1, 0);
       else if (d.kind === DelayKind.Ring) this.ring(d.x, d.z, { radius: d.r, color: d.color, life: 0.8, width: 1.2, from: 0.2 });
       else {
         for (let i = 0; i < 12; i++) {

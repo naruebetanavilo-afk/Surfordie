@@ -114,7 +114,7 @@ void main() {
     float fill = 1.0 - step(prog, r);
     float front = fill * smoothstep(prog - 0.1, prog, r);
     float pulse = 0.85 + 0.15 * sin(vC.y);
-    a = (outline * 0.95 + 0.2 + fill * 0.32 + front * 0.45) * pulse;
+    a = (outline * 0.95 + 0.24 + fill * 0.38 + front * 0.5) * pulse;
     col = mix(vColor, vec3(1.0), front * 0.35 + outline * 0.1);
   } else if (mode < 5.5) {
     // goo splat: lumpy blob + satellite droplets
