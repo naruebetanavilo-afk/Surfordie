@@ -342,8 +342,8 @@
 }
 
 .slot.empty {
-  background: rgba(22, 13, 36, 0.3);
-  box-shadow: inset 0 0 0 0.1em rgba(255, 255, 255, 0.16);
+  background: rgba(22, 13, 36, 0.18);
+  box-shadow: inset 0 0 0 0.09em rgba(255, 255, 255, 0.12);
 }
 
 .slot.empty .slot-icon,
@@ -861,6 +861,7 @@
   border: 0.16em solid var(--ink);
   border-radius: 0.85em;
   box-shadow: inset 0 0.16em 0 rgba(255, 255, 255, 0.3), inset 0 -0.22em 0 rgba(0, 0, 0, 0.2), 0 0.3em 0 var(--ink);
+  white-space: nowrap;
   cursor: pointer;
   touch-action: manipulation;
   transition: transform 0.08s, box-shadow 0.08s, filter 0.15s;
@@ -1853,6 +1854,10 @@
   color: #fff6c4;
 }
 
+.reward-card.evo.show {
+  animation: rewardIn 0.5s cubic-bezier(0.2, 1.5, 0.4, 1) both, evoPulse 1.6s 0.5s ease-in-out infinite;
+}
+
 /* shine sweep (evolution cards) */
 .shine {
   position: absolute;
@@ -1885,11 +1890,11 @@
 
 /* =============================================================== CHEST */
 .screen.chest {
-  background: radial-gradient(ellipse at 50% 34%, rgba(130, 70, 20, 0.6), rgba(10, 6, 20, 0.93) 70%);
+  background: radial-gradient(ellipse at 50% 34%, rgba(92, 46, 20, 0.86), rgba(10, 6, 20, 0.95) 68%);
 }
 
 .screen.chest.has-evo {
-  background: radial-gradient(ellipse at 50% 34%, rgba(190, 130, 20, 0.7), rgba(16, 8, 20, 0.93) 72%);
+  background: radial-gradient(ellipse at 50% 34%, rgba(140, 92, 10, 0.88), rgba(16, 8, 20, 0.95) 70%);
 }
 
 .chest-title {
@@ -2535,8 +2540,61 @@
     width: min(100%, 44em);
   }
 
-  .owned-grid {
-    grid-template-columns: repeat(3, 1fr);
+  /* pause: weapons | passives side by side, actions in one row */
+  .pause-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "head head"
+      "stats stats"
+      "wt pt"
+      "wg pg"
+      "actions actions";
+    align-content: start;
+    column-gap: 1em;
+    row-gap: 0.55em;
+  }
+
+  .pause-panel > .panel-head {
+    grid-area: head;
+  }
+  .pause-stats {
+    grid-area: stats;
+  }
+  .sec-title.sec-w {
+    grid-area: wt;
+  }
+  .sec-title.sec-p {
+    grid-area: pt;
+  }
+  .owned-grid.sec-w {
+    grid-area: wg;
+    align-content: start;
+  }
+  .owned-grid.sec-p {
+    grid-area: pg;
+    align-content: start;
+  }
+  .pause-actions {
+    grid-area: actions;
+    flex-direction: row;
+    margin: 0;
+  }
+  .pause-actions > .btn {
+    flex: 1.2;
+  }
+  .pause-actions > .btn.big {
+    font-size: 1.15em;
+  }
+  .pause-actions > .btn-row {
+    flex: 2;
+  }
+  .owned {
+    padding: 0.2em 0.4em;
+  }
+  .owned-icon {
+    width: 2em;
+    height: 2em;
   }
 
   /* level-up: horizontal row of tall cards */
@@ -2676,6 +2734,12 @@
   }
   .res-actions .btn {
     flex: 1;
+    min-width: 0;
+  }
+
+  .res-actions .btn.big {
+    font-size: 1.12em;
+    padding: 0.45em 0.8em;
   }
 }
 
@@ -3192,6 +3256,12 @@
   100% {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes evoPulse {
+  50% {
+    box-shadow: inset 0 0 0 0.14em #fff3a6, 0 0 2.6em rgba(255, 210, 63, 0.95), 0 0.35em 0 var(--ink);
   }
 }
 

@@ -551,6 +551,64 @@ function withTransform(c: CanvasRenderingContext2D, x: number, y: number, k: num
 
 function drawChest(c: CanvasRenderingContext2D, s: number, open: boolean): void {
   const wood = vgrad(c, s * 0.45, s * 0.9, "#c06a2b", "#7a3a14");
+  if (open) {
+    // light pouring out
+    const g = c.createRadialGradient(s * 0.5, s * 0.4, s * 0.02, s * 0.5, s * 0.4, s * 0.48);
+    g.addColorStop(0, "rgba(255,255,230,1)");
+    g.addColorStop(0.35, "rgba(255,214,90,0.75)");
+    g.addColorStop(1, "rgba(255,190,60,0)");
+    c.fillStyle = g;
+    c.fillRect(0, 0, s, s);
+    // lid swung open: we see its darker inner face, narrower at the top
+    c.beginPath();
+    c.moveTo(s * 0.15, s * 0.46);
+    c.lineTo(s * 0.21, s * 0.1);
+    c.lineTo(s * 0.79, s * 0.1);
+    c.lineTo(s * 0.85, s * 0.46);
+    c.closePath();
+    fs(c, s, vgrad(c, s * 0.1, s * 0.46, "#7a3a14", "#3f1c08"), 0.05);
+    c.beginPath();
+    c.moveTo(s * 0.19, s * 0.1);
+    c.lineTo(s * 0.81, s * 0.1);
+    c.lineTo(s * 0.8, s * 0.17);
+    c.lineTo(s * 0.2, s * 0.17);
+    c.closePath();
+    fs(c, s, "#d9843d", 0.035);
+    c.beginPath();
+    c.rect(s * 0.27, s * 0.17, s * 0.07, s * 0.28);
+    c.rect(s * 0.66, s * 0.17, s * 0.07, s * 0.28);
+    fs(c, s, vgrad(c, s * 0.17, s * 0.45, "#ffe27a", "#c98200"), 0.03);
+    // treasure mound
+    c.beginPath();
+    c.moveTo(s * 0.13, s * 0.5);
+    c.quadraticCurveTo(s * 0.28, s * 0.3, s * 0.5, s * 0.32);
+    c.quadraticCurveTo(s * 0.72, s * 0.3, s * 0.87, s * 0.5);
+    c.closePath();
+    const mg = c.createRadialGradient(s * 0.45, s * 0.34, s * 0.02, s * 0.5, s * 0.42, s * 0.36);
+    mg.addColorStop(0, "#fff8c8");
+    mg.addColorStop(0.5, "#ffd23f");
+    mg.addColorStop(1, "#e08a00");
+    fs(c, s, mg, 0.045);
+    for (const [x, y, r] of [
+      [0.3, 0.43, 0.06],
+      [0.5, 0.37, 0.065],
+      [0.68, 0.43, 0.06],
+      [0.4, 0.46, 0.05],
+      [0.6, 0.47, 0.05],
+    ] as const) {
+      c.beginPath();
+      c.ellipse(s * x, s * y, s * r, s * r * 0.7, 0, 0, Math.PI * 2);
+      fs(c, s, "#ffe46b", 0.025);
+    }
+    // a pink gem in the pile
+    c.beginPath();
+    c.moveTo(s * 0.56, s * 0.29);
+    c.lineTo(s * 0.62, s * 0.35);
+    c.lineTo(s * 0.56, s * 0.43);
+    c.lineTo(s * 0.5, s * 0.35);
+    c.closePath();
+    fs(c, s, "#ff3d9a", 0.03);
+  }
   // body
   c.beginPath();
   c.roundRect(s * 0.12, s * 0.46, s * 0.76, s * 0.4, s * 0.05);
@@ -570,30 +628,13 @@ function drawChest(c: CanvasRenderingContext2D, s: number, open: boolean): void 
   c.rect(s * 0.71, s * 0.46, s * 0.09, s * 0.4);
   fs(c, s, vgrad(c, s * 0.46, s * 0.86, "#fff1a0", "#d98a00"), 0.035);
   if (open) {
-    // inner glow
-    const g = c.createRadialGradient(s * 0.5, s * 0.46, s * 0.02, s * 0.5, s * 0.46, s * 0.42);
-    g.addColorStop(0, "rgba(255,255,220,1)");
-    g.addColorStop(0.4, "rgba(255,210,63,0.7)");
-    g.addColorStop(1, "rgba(255,210,63,0)");
-    c.fillStyle = g;
+    // front lock plate hangs open
     c.beginPath();
-    c.ellipse(s * 0.5, s * 0.42, s * 0.42, s * 0.3, 0, 0, Math.PI * 2);
-    c.fill();
-    // lid tilted back
-    c.beginPath();
-    c.moveTo(s * 0.12, s * 0.46);
-    c.lineTo(s * 0.18, s * 0.16);
-    c.quadraticCurveTo(s * 0.5, s * 0.02, s * 0.82, s * 0.16);
-    c.lineTo(s * 0.88, s * 0.46);
-    c.quadraticCurveTo(s * 0.5, s * 0.36, s * 0.12, s * 0.46);
-    c.closePath();
-    fs(c, s, vgrad(c, s * 0.1, s * 0.46, "#5a2a0e", "#8a4418"), 0.05);
-    // treasure peek
-    c.beginPath();
-    c.ellipse(s * 0.5, s * 0.47, s * 0.34, s * 0.06, 0, 0, Math.PI * 2);
-    fs(c, s, "#ffd23f", 0.04);
-    sparkle(c, s * 0.36, s * 0.38, s * 0.06);
-    sparkle(c, s * 0.64, s * 0.34, s * 0.08);
+    c.roundRect(s * 0.43, s * 0.46, s * 0.14, s * 0.13, s * 0.03);
+    fs(c, s, vgrad(c, s * 0.46, s * 0.59, "#fff1a0", "#e09200"), 0.035);
+    sparkle(c, s * 0.3, s * 0.24, s * 0.07);
+    sparkle(c, s * 0.72, s * 0.2, s * 0.09);
+    sparkle(c, s * 0.5, s * 0.06, s * 0.05, "rgba(255,255,255,0.85)");
   } else {
     // domed lid
     c.beginPath();

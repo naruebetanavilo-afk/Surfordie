@@ -151,6 +151,14 @@ export class Screens {
   showMenu(): void {
     const s = this.open("menu");
     if (!HEROES.some((h) => h.id === this.selectedHero)) this.selectedHero = HEROES[0].id;
+    // close-up of the hero behind the menu; startRun resets zoom to 1, which
+    // gives a nice pull-back when the run begins
+    if (G.state === "menu") {
+      G.world.zoom = 0.58;
+      // Player.reset grants spawn invulnerability, which only ticks down in
+      // update(); in the menu that would leave the hero blinking forever
+      G.player.invuln = 0;
+    }
 
     const top = el("div", "menu-top", s);
     const rec = el("div", "record-chip", top);
@@ -230,7 +238,10 @@ export class Screens {
         card.classList.add("selected");
         pulse(detail, "swap");
         // show the chosen hero's 3D model behind the menu
-        if (G.state === "menu") G.player.reset(h.id);
+        if (G.state === "menu") {
+          G.player.reset(h.id);
+          G.player.invuln = 0;
+        }
         if (!locked(h)) {
           Meta.data.lastHero = h.id;
           Meta.save();
@@ -743,11 +754,11 @@ export class Screens {
     stat("star", `Lv.${G.player.level}`);
     stat("coin", formatNum(G.stats.gold));
 
-    const section = (title: string, count: number, max: number) => {
-      const t = el("div", "sec-title", panel);
+    const section = (title: string, count: number, max: number, cls: string) => {
+      const t = el("div", "sec-title " + cls, panel);
       el("span", "", t, title);
       el("small", "", t, `${count}/${max}`);
-      return el("div", "owned-grid", panel);
+      return el("div", "owned-grid " + cls, panel);
     };
     const item = (grid: HTMLElement, icon: string, name: string, level: number, max: number, color: string, evolved: boolean) => {
       const it = el("div", "owned" + (evolved ? " evolved" : level >= max ? " max" : ""), grid);
@@ -760,7 +771,7 @@ export class Screens {
     };
 
     const ws = G.weapons.weapons;
-    const wg = section("อาวุธ", ws.length, G.weapons.maxWeapons);
+    const wg = section("อาวุธ", ws.length, G.weapons.maxWeapons, "sec-w");
     for (const w of ws) {
       const ev = w.evolved && w.def.evolution;
       const icon = iconURL((w.evolved ? "e:" : "w:") + w.def.id, (ev && ev.icon) || w.def.icon, 64);
@@ -768,7 +779,7 @@ export class Screens {
     }
     if (!ws.length) el("div", "owned-empty", wg, "ยังไม่มีอาวุธ");
 
-    const pg = section("ไอเท็มเสริม", G.weapons.passives.size, G.weapons.maxPassives);
+    const pg = section("ไอเท็มเสริม", G.weapons.passives.size, G.weapons.maxPassives, "sec-p");
     G.weapons.passives.forEach((lvl, id) => {
       const d = passiveById(id);
       if (d) item(pg, iconURL("p:" + id, d.icon, 64), d.name, lvl, d.maxLevel, d.color, false);
