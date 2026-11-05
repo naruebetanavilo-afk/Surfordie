@@ -6,7 +6,7 @@ import { iconBg } from "../ui/icons";
 import { VFX, col, SPARK_EMBER, SPARK_STAR, SPARK_GLOW, DECAL_SHOCK, DECAL_GLOW } from "./vfx";
 import { SpriteBatch } from "./vfx/SpriteBatch";
 import { softGlowTex } from "./vfx/textures";
-import { levelLines } from "./util";
+import { levelLines, liveSlot } from "./util";
 import { evolvedFrame, glow, star4 } from "./iconkit";
 
 /**
@@ -130,11 +130,12 @@ class Aura extends Weapon {
   private radius = 1.9;
   private hits: number[] = [];
   private readonly collect = (i: number): void => {
-    this.hits.push(i);
+    if (liveSlot(i)) this.hits.push(i);
   };
   private wispLast = new Map<number, number>();
   private wispDmg = 0;
   private readonly wispCb = (i: number): void => {
+    if (!liveSlot(i)) return;
     const uid = G.enemies.uid[i];
     const last = this.wispLast.get(uid) ?? -9;
     if (G.time - last < 0.5) return;

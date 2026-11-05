@@ -6,7 +6,7 @@ import { Weapon, type WeaponDef } from "./types";
 import { iconBg } from "../ui/icons";
 import { VFX, col, SPARK_STAR } from "./vfx";
 import { weaponToonRamp, paint, prep } from "./vfx/toon";
-import { levelLines } from "./util";
+import { levelLines, liveSlot } from "./util";
 import { evolvedFrame, glow, INK } from "./iconkit";
 
 /**
@@ -130,6 +130,7 @@ class Orbit extends Weapon {
   private s = new THREE.Vector3();
   private hitDmg = 0;
   private readonly hitCb = (i: number): void => {
+    if (!liveSlot(i)) return;
     const uid = G.enemies.uid[i];
     const now = G.time;
     const last = this.lastHit.get(uid) ?? -9;

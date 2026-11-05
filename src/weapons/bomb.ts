@@ -1,5 +1,4 @@
 import { G } from "../core/G";
-import { hitCircle } from "../combat/damage";
 import { Weapon, type WeaponDef } from "./types";
 import { iconBg } from "../ui/icons";
 import {
@@ -16,7 +15,7 @@ import {
 } from "./vfx";
 import { SpriteBatch } from "./vfx/SpriteBatch";
 import { softGlowTex } from "./vfx/textures";
-import { levelLines } from "./util";
+import { levelLines, aoeHit, liveSlot } from "./util";
 import { evolvedFrame, glow, orb, star4 } from "./iconkit";
 
 /**
@@ -83,8 +82,8 @@ class Bomb extends Weapon {
   private tx = new Float32Array(MAX_ORBS);
   private tz = new Float32Array(MAX_ORBS);
   private cnt = 0;
-  private readonly countCb = (): void => {
-    this.cnt++;
+  private readonly countCb = (i: number): void => {
+    if (liveSlot(i)) this.cnt++;
   };
   private pullX = 0;
   private pullZ = 0;
@@ -94,6 +93,8 @@ class Bomb extends Weapon {
   };
   private shakeCd = 0;
   private boomCd = 0;
+  private readonly blastOpts = { kb: 8 };
+  private readonly burnOpts = { kb: 0 };
 
   constructor(def: WeaponDef) {
     super(def);
@@ -275,7 +276,7 @@ class Bomb extends Weapon {
 
   /** the blast: damage + layered visuals. `power` scales the visuals (secondary blasts use < 1) */
   private detonate(x: number, z: number, r: number, dmg: number, spawnVortex: boolean, power: number): void {
-    hitCircle(x, z, r, dmg, this.def.id, { kb: 8 });
+    aoeHit(x, z, r, dmg, this.def.id, this.blastOpts);
     const ev = this.evolved;
     const main = col(ev ? EV_MAIN : MAGENTA);
     const accent = col(ev ? EV_ACC : HOT);
@@ -297,7 +298,13 @@ class Bomb extends Weapon {
       this.boomCd = 0.07;
     }
     if (spawnVortex) {
-      const v = this.vortices.find((q) => !q.active);
+      let v: Vortex | null = null;
+      for (const q of this.vortices) {
+        if (!q.active) {
+          v = q;
+          break;
+        }
+      }
       if (v) {
         v.active = true;
         v.x = x;
@@ -336,7 +343,7 @@ class Bomb extends Weapon {
         this.pullX = v.x;
         this.pullZ = v.z;
         em.queryCircle(v.x, v.z, v.r * 1.4, this.pullCb);
-        hitCircle(v.x, v.z, v.r, v.dmg, this.def.id, { kb: 0 });
+        aoeHit(v.x, v.z, v.r, v.dmg, this.def.id, this.burnOpts);
         VFX.decals.spawn(v.x, v.z, v.r * 1.1, 0.75, acc, DECAL_VORTEX, 0.8, -7, 0.85, 0.2);
       }
       if (v.t >= v.life) {

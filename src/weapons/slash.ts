@@ -5,6 +5,7 @@ import { Weapon, type WeaponDef } from "./types";
 import { iconBg } from "../ui/icons";
 import { VFX, col, SPARK_STAR } from "./vfx";
 import { evolvedFrame, glow } from "./iconkit";
+import { liveSlot } from "./util";
 
 /**
  * ดาบพิฆาต (Slayer Blade) — reference weapon implementation.
@@ -75,6 +76,7 @@ class Slash extends Weapon {
     G.audio.sfx("slash");
     const hits: number[] = [];
     G.enemies.queryCircle(p.x, p.z, r, (i) => {
+      if (!liveSlot(i)) return;
       const ex = G.enemies.x[i] - p.x;
       const ez = G.enemies.z[i] - p.z;
       const l = Math.hypot(ex, ez) || 1;

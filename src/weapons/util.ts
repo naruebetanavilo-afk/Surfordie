@@ -1,4 +1,7 @@
-/** helpers shared by weapon definitions (toast lines, numbers) */
+import { G } from "../core/G";
+import { hitEnemy, type HitOpts } from "../combat/damage";
+
+/** helpers shared by weapon definitions (toast lines, numbers, safe AoE) */
 
 export type LineKind =
   /** bigger is better, shown as +x% */
@@ -52,4 +55,35 @@ export function clamp01(v: number): number {
 export function easeOutBack(t: number, s = 1.70158): number {
   const u = t - 1;
   return 1 + u * u * ((s + 1) * u + s);
+}
+
+/**
+ * True if enemy slot `i` is a real, living enemy. The spatial grid is rebuilt
+ * before dead slots are compacted, so for one frame it can hand out stale
+ * slots past `n` (a ghost copy of a moved enemy). Hitting one would grant a
+ * phantom kill and corrupt the alive count, so weapons skip them.
+ */
+export function liveSlot(i: number): boolean {
+  const em = G.enemies;
+  return i < em.n && em.state[i] === 0;
+}
+
+const aoeBuf: number[] = [];
+const aoeCollect = (i: number): void => {
+  if (liveSlot(i)) aoeBuf.push(i);
+};
+
+/** allocation-free hitCircle that ignores stale grid slots. Returns enemies hit. */
+export function aoeHit(x: number, z: number, r: number, base: number, source: string, o: HitOpts = {}): number {
+  aoeBuf.length = 0;
+  G.enemies.queryCircle(x, z, r, aoeCollect);
+  const fx = o.fromX;
+  const fz = o.fromZ;
+  if (fx === undefined) o.fromX = x;
+  if (fz === undefined) o.fromZ = z;
+  const n = aoeBuf.length;
+  for (let k = 0; k < n; k++) hitEnemy(aoeBuf[k], base, source, o);
+  o.fromX = fx;
+  o.fromZ = fz;
+  return n;
 }

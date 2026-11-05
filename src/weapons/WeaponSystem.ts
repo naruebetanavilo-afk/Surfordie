@@ -28,6 +28,28 @@ export class WeaponSystem {
   readonly maxWeapons = 6;
   readonly maxPassives = 6;
 
+  constructor() {
+    // G.events is created before the weapon system during boot
+    G.events?.on("runEnd", () => this.afterglow());
+  }
+
+  /**
+   * The simulation stops on game over / victory; let in-flight weapon effects
+   * play out in slow motion (like Fx does) instead of freezing mid-air.
+   */
+  private afterglow(): void {
+    let last = performance.now();
+    const step = (now: number): void => {
+      if (G.state !== "gameover" && G.state !== "victory") return;
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+      last = now;
+      VFX.begin(dt * 0.3);
+      VFX.flush();
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
   reset(startWeapon: string): void {
     for (const w of this.weapons) w.dispose();
     VFX.clear();

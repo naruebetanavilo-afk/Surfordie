@@ -1,9 +1,9 @@
 import { G } from "../core/G";
-import { hitEnemy, hitCircle } from "../combat/damage";
+import { hitEnemy } from "../combat/damage";
 import { Weapon, type WeaponDef } from "./types";
 import { iconBg } from "../ui/icons";
 import { VFX, col, SPARK_GLOW, SPARK_STAR, DECAL_CRACK, DECAL_SHOCK, DECAL_GLOW, DECAL_SCORCH } from "./vfx";
-import { levelLines } from "./util";
+import { levelLines, aoeHit } from "./util";
 import { evolvedFrame, glow, star4, INK } from "./iconkit";
 
 /**
@@ -49,6 +49,8 @@ class Lightning extends Weapon {
   private struck = new Set<number>();
   private thunderCd = 0;
   private zapCd = 0;
+  private readonly impactOpts = { kb: 3 };
+  private readonly stunOpts = { kb: 3, freeze: 0.4 };
 
   constructor(def: WeaponDef) {
     super(def);
@@ -134,7 +136,7 @@ class Lightning extends Weapon {
     VFX.bolts.spawn(tx, 13, tz, x, 0.15, z, "#ffffff", 0.22, 0.45, 0.18);
     // ground impact
     const r = this.area(ev ? 2.2 : 1.0);
-    hitCircle(x, z, r, dmg, this.def.id, { kb: 3, freeze: ev ? 0.4 : undefined });
+    aoeHit(x, z, r, dmg, this.def.id, ev ? this.stunOpts : this.impactOpts);
     const pale = col(ev ? EV_PALE : PALE);
     VFX.decals.spawn(x, z, Math.max(1.3, r * 1.3), 0.45, col(glowC), DECAL_CRACK, 1.1, 0, 0.5, 0.1);
     VFX.decals.spawn(x, z, r * 1.5, 0.35, pale, DECAL_SHOCK, 0.9, 0, 0.2, 0.9);
@@ -165,7 +167,7 @@ class Lightning extends Weapon {
   private chain(x: number, z: number, dmg: number, jumps: number, set: Set<number>): void {
     const em = G.enemies;
     const j = em.nearest(x, z, 5 * Math.sqrt(G.player.stats.area), set);
-    if (j < 0) {
+    if (j < 0 || j >= em.n) {
       this.releaseSet(set);
       return;
     }

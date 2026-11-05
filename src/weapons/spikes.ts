@@ -5,7 +5,7 @@ import { Weapon, type WeaponDef } from "./types";
 import { iconBg } from "../ui/icons";
 import { VFX, col, SPARK_EMBER, DECAL_SCORCH, DECAL_GLOW, DECAL_CRACK } from "./vfx";
 import { weaponToonRamp } from "./vfx/toon";
-import { levelLines, easeOutBack } from "./util";
+import { levelLines, easeOutBack, liveSlot } from "./util";
 import { evolvedFrame, glow, INK } from "./iconkit";
 
 /**
@@ -122,6 +122,7 @@ class Spikes extends Weapon {
   private curDmg = 0;
   private curRoot = false;
   private readonly hitCb = (i: number): void => {
+    if (!liveSlot(i)) return;
     const em = G.enemies;
     const uid = em.uid[i];
     if (this.hitVol.get(uid) === this.curVol) return;
