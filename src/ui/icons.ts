@@ -12,7 +12,7 @@ export function iconURL(key: string, draw: IconDraw, size = 96): string {
   if (hit) return hit;
   const cv = document.createElement("canvas");
   cv.width = cv.height = size;
-  const c = cv.getContext("2d")!;
+  const c = cv.getContext("2d", { willReadFrequently: true })!;
   c.lineJoin = "round";
   c.lineCap = "round";
   draw(c, size);
