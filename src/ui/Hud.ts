@@ -1,9 +1,9 @@
 import { G } from "../core/G";
 import { Meta } from "../core/Meta";
 import { formatTime, formatNum } from "../core/math";
-import { iconURL, uiIcon } from "./icons";
-import { weaponById } from "../weapons/registry";
-import { passiveById } from "../upgrades/passives";
+import { iconURL, uiIcon, prewarmIcon, prewarmUi } from "./icons";
+import { weaponById, WEAPONS } from "../weapons/registry";
+import { passiveById, PASSIVES } from "../upgrades/passives";
 import { RUN_LENGTH } from "../director/Director";
 import type { Choice } from "../weapons/WeaponSystem";
 
@@ -197,6 +197,23 @@ export class Hud {
       this.bossScanT = 0;
     });
     G.events.on("levelUp", () => this.flashLevel());
+    Hud.prewarm();
+  }
+
+  /**
+   * Generate every weapon / evolution / passive icon (and the chest art) in
+   * idle time, so the level-up, chest and pause screens never have to draw
+   * several canvases in the frame they open.
+   */
+  private static prewarm(): void {
+    for (const w of WEAPONS) {
+      prewarmIcon("w:" + w.id, w.icon);
+      if (w.evolution) prewarmIcon("e:" + w.id, w.evolution.icon ?? w.icon);
+    }
+    for (const p of PASSIVES) prewarmIcon("p:" + p.id, p.icon);
+    prewarmUi("chest", 192);
+    prewarmUi("chestOpen", 192);
+    prewarmUi("bossSkull", 64);
   }
 
   private makeSlot(parent: HTMLElement): SlotView {
@@ -335,13 +352,13 @@ export class Hud {
       if (d) {
         max = d.maxLevel;
         const evIcon = evolved && d.evolution?.icon;
-        s.icon.src = iconURL((evolved ? "e:" : "w:") + id, evIcon || d.icon, 64);
+        s.icon.src = iconURL((evolved ? "e:" : "w:") + id, evIcon || d.icon);
       }
     } else {
       const d = passiveById(id);
       if (d) {
         max = d.maxLevel;
-        s.icon.src = iconURL("p:" + id, d.icon, 64);
+        s.icon.src = iconURL("p:" + id, d.icon);
       }
     }
     s.pips.style.setProperty("--n", String(max));

@@ -201,7 +201,7 @@ export class Screens {
       const h = HEROES.find((x) => x.id === this.selectedHero) ?? HEROES[0];
       detail.style.setProperty("--accent", h.color);
       const wd = weaponById(h.startWeapon);
-      if (wd) detailIco.src = iconURL("w:" + wd.id, wd.icon, 64);
+      if (wd) detailIco.src = iconURL("w:" + wd.id, wd.icon);
       detailIco.style.display = wd ? "" : "none";
       detailTxt.textContent = h.desc;
       if (locked(h)) {
@@ -774,7 +774,7 @@ export class Screens {
     const wg = section("อาวุธ", ws.length, G.weapons.maxWeapons, "sec-w");
     for (const w of ws) {
       const ev = w.evolved && w.def.evolution;
-      const icon = iconURL((w.evolved ? "e:" : "w:") + w.def.id, (ev && ev.icon) || w.def.icon, 64);
+      const icon = iconURL((w.evolved ? "e:" : "w:") + w.def.id, (ev && ev.icon) || w.def.icon);
       item(wg, icon, ev ? ev.name : w.def.name, w.level, w.def.maxLevel, w.def.color, w.evolved);
     }
     if (!ws.length) el("div", "owned-empty", wg, "ยังไม่มีอาวุธ");
@@ -782,7 +782,7 @@ export class Screens {
     const pg = section("ไอเท็มเสริม", G.weapons.passives.size, G.weapons.maxPassives, "sec-p");
     G.weapons.passives.forEach((lvl, id) => {
       const d = passiveById(id);
-      if (d) item(pg, iconURL("p:" + id, d.icon, 64), d.name, lvl, d.maxLevel, d.color, false);
+      if (d) item(pg, iconURL("p:" + id, d.icon), d.name, lvl, d.maxLevel, d.color, false);
     });
     if (!G.weapons.passives.size) el("div", "owned-empty", pg, "ยังไม่มีไอเท็ม");
 
@@ -889,7 +889,7 @@ export class Screens {
         const row = el("div", "dmg-row", dmg);
         row.style.setProperty("--accent", d.color);
         row.style.animationDelay = `${0.35 + i * 0.08}s`;
-        img("dmg-ico", row, iconURL((ev ? "e:" : "w:") + id, (ev && ev.icon) || d.icon, 64));
+        img("dmg-ico", row, iconURL((ev ? "e:" : "w:") + id, (ev && ev.icon) || d.icon));
         const mid = el("div", "dmg-mid", row);
         const nm = el("div", "dmg-name", mid);
         el("span", "", nm, ev ? ev.name : d.name);

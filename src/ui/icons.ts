@@ -10,19 +10,79 @@ export type IconDraw = (c: CanvasRenderingContext2D, s: number) => void;
 
 const cache = new Map<string, string>();
 
+/**
+ * One reusable scratch canvas. `willReadFrequently` keeps it CPU-backed: a
+ * GPU-accelerated 2D canvas makes every toDataURL() wait for the GPU to finish
+ * all queued WebGL work and read the pixels back. That stall (100-400 ms per
+ * icon in software GL, tens of ms on phones) is what made the first level-up
+ * screen of a run freeze for 1-4 s while its card icons were generated.
+ */
+let scratch: HTMLCanvasElement | null = null;
+let scratchCtx: CanvasRenderingContext2D | null = null;
+
 export function iconURL(key: string, draw: IconDraw, size = 96): string {
   const k = `${key}@${size}`;
   const hit = cache.get(k);
   if (hit) return hit;
-  const cv = document.createElement("canvas");
-  cv.width = cv.height = size;
-  const c = cv.getContext("2d")!;
+  if (!scratch || !scratchCtx) {
+    scratch = document.createElement("canvas");
+    scratchCtx = scratch.getContext("2d", { willReadFrequently: true })!;
+  }
+  const cv = scratch;
+  // assigning width/height clears the bitmap and resets all context state
+  cv.width = size;
+  cv.height = size;
+  const c = scratchCtx;
   c.lineJoin = "round";
   c.lineCap = "round";
   draw(c, size);
   const url = cv.toDataURL("image/png");
   cache.set(k, url);
   return url;
+}
+
+/** true when the icon is already generated (no canvas work needed) */
+export function iconCached(key: string, size = 96): boolean {
+  return cache.has(`${key}@${size}`);
+}
+
+interface IconJob {
+  key: string;
+  draw: IconDraw;
+  size: number;
+}
+const warmQueue: IconJob[] = [];
+let warmScheduled = false;
+
+type IdleCb = (cb: (d: { timeRemaining(): number }) => void, o?: { timeout: number }) => number;
+
+function scheduleWarm(): void {
+  if (warmScheduled || !warmQueue.length) return;
+  warmScheduled = true;
+  const ric = (window as unknown as { requestIdleCallback?: IdleCb }).requestIdleCallback;
+  const run = (budget: () => number): void => {
+    warmScheduled = false;
+    // a few icons per idle slice so no single frame gets long
+    let n = 0;
+    while (warmQueue.length && (n < 1 || budget() > 4) && n < 6) {
+      const j = warmQueue.shift()!;
+      iconURL(j.key, j.draw, j.size);
+      n++;
+    }
+    scheduleWarm();
+  };
+  if (ric) ric((d) => run(() => d.timeRemaining()), { timeout: 400 });
+  else window.setTimeout(() => run(() => 0), 30);
+}
+
+/**
+ * Queue icons to be generated in idle time (menu, early run) so modals that
+ * show many icons at once only hit the cache.
+ */
+export function prewarmIcon(key: string, draw: IconDraw, size = 96): void {
+  if (cache.has(`${key}@${size}`)) return;
+  warmQueue.push({ key, draw, size });
+  scheduleWarm();
 }
 
 /** UI outline colour (deep purple-black, matches --ink in CSS) */
@@ -672,6 +732,11 @@ function drawChest(c: CanvasRenderingContext2D, s: number, open: boolean): void 
 /** data URL of a UI glyph (transparent background) */
 export function uiIcon(name: UiIconName, size = 64): string {
   return iconURL("ui:" + name, UI[name], size);
+}
+
+/** queue a UI glyph for idle-time generation (see prewarmIcon) */
+export function prewarmUi(name: UiIconName, size = 64): void {
+  prewarmIcon("ui:" + name, UI[name], size);
 }
 
 // ------------------------------------------------------------------ shop
