@@ -1,6 +1,7 @@
 import { G } from "../core/G";
 import type { IconDraw } from "../ui/icons";
 import type { PlayerStats } from "../player/stats";
+import { VFX } from "./vfx";
 
 export interface WeaponDef {
   id: string;
@@ -60,8 +61,13 @@ export abstract class Weapon {
   onLevelUp(): void {}
   /** called after evolving */
   onEvolve(): void {}
-  /** remove any persistent meshes (new run) */
-  dispose(): void {}
+  /**
+   * remove any persistent meshes (new run / back to menu). Subclasses that
+   * override this must call super.dispose() (it drops shared weapon effects).
+   */
+  dispose(): void {
+    VFX.clear();
+  }
 }
 
 export interface PassiveDef {
