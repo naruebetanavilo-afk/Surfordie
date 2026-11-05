@@ -595,7 +595,7 @@ const rangerPortrait: IconDraw = (c, s) => {
   c.beginPath();
   c.arc(s * 0.5, s * 0.58, s * 0.26, Math.PI * 0.85, Math.PI * 2.15);
   c.stroke();
-  c.strokeStyle = "#3fa04e";
+  c.strokeStyle = "#d9772b";
   c.lineWidth = s * 0.045;
   c.stroke();
   c.restore();
