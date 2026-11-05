@@ -241,7 +241,7 @@ export class EnemyManager {
   /** visit living enemies whose body overlaps circle (x,z,r). return true from cb to stop early */
   queryCircle(x: number, z: number, r: number, cb: (i: number) => boolean | void): void {
     this.grid.query(x, z, r + 1.6, (i) => {
-      if (this.state[i] !== 0) return false;
+      if (i >= this.n || this.state[i] !== 0) return false;
       const dx = this.x[i] - x;
       const dz = this.z[i] - z;
       const rr = r + this.radius[i];
@@ -257,7 +257,7 @@ export class EnemyManager {
     // grid query for small radius, brute force otherwise
     if (maxR <= 12) {
       this.grid.query(x, z, maxR, (i) => {
-        if (this.state[i] !== 0) return;
+        if (i >= this.n || this.state[i] !== 0) return;
         if (exclude && exclude.has(this.uid[i])) return;
         const dx = this.x[i] - x;
         const dz = this.z[i] - z;
@@ -410,15 +410,25 @@ export class EnemyManager {
       }
     }
 
-    // 2) spatial grid + separation
+    // 2) remove fully dead BEFORE building the grid: compaction moves slots, and
+    //    the grid must index the final layout or later queries this frame
+    //    (weapons, projectile collisions) would hit stale copies (phantom kills).
+    //    Descending order keeps indices valid while swapping.
+    if (this.removeQueue.length) {
+      this.removeQueue.sort((a, b) => b - a);
+      for (const i of this.removeQueue) this.removeAt(i);
+      this.removeQueue.length = 0;
+    }
+
+    // 3) spatial grid + separation
     this.grid.rebuild(this, px, pz);
     this.separate();
 
-    // 3) player contact
+    // 4) player contact
     let maxD = 0;
     let sumD = 0;
     let touching = 0;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0, live = this.n; i < live; i++) {
       if (this.state[i] !== 0) continue;
       const dx = this.x[i] - px;
       const dz = this.z[i] - pz;
@@ -442,12 +452,6 @@ export class EnemyManager {
       p.contactDamage(total);
     }
 
-    // 4) remove fully dead (descending order keeps indices valid while swapping)
-    if (this.removeQueue.length) {
-      this.removeQueue.sort((a, b) => b - a);
-      for (const i of this.removeQueue) this.removeAt(i);
-      this.removeQueue.length = 0;
-    }
     animTime.value = G.time;
     G.perf.enemies = this.aliveCount;
   }
