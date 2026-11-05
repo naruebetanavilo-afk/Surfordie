@@ -222,8 +222,30 @@ export class Game {
       this.botT = 1.5 + Math.random() * 2;
       this.botAngle += (Math.random() - 0.5) * 2.5;
     }
-    fx += Math.cos(this.botAngle) * 0.6;
-    fz += Math.sin(this.botAngle) * 0.6;
+    // go for the nearest pickup (gems, coins, hearts, chests) like a real player;
+    // strongly when nothing is close, weakly while threatened
+    const pk = G.pickups;
+    let best = -1;
+    let bd = 81;
+    for (let k = 0; k < pk.n; k++) {
+      const dx = pk.x[k] - p.x;
+      const dz = pk.z[k] - p.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bd) {
+        bd = d2;
+        best = k;
+      }
+    }
+    const danger = Math.hypot(fx, fz);
+    if (best >= 0) {
+      const d = Math.sqrt(bd) || 1;
+      const w = danger < 0.35 ? 1.6 : 0.5;
+      fx += ((pk.x[best] - p.x) / d) * w;
+      fz += ((pk.z[best] - p.z) / d) * w;
+    } else {
+      fx += Math.cos(this.botAngle) * 0.6;
+      fz += Math.sin(this.botAngle) * 0.6;
+    }
     const l = Math.hypot(fx, fz) || 1;
     inp.botX = fx / l;
     inp.botZ = fz / l;
