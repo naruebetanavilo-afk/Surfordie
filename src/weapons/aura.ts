@@ -49,6 +49,8 @@ const ringFrag = /* glsl */ `
 uniform float uTime;
 uniform float uEvo;
 uniform float uFlash;
+uniform float uS;
+uniform float uRing;
 uniform vec3 uDeep;
 uniform vec3 uMid;
 uniform vec3 uHot;
@@ -58,22 +60,26 @@ void main() {
   vec2 p = vUv * 2.0 - 1.0;
   float r = length(p);
   if (r > 1.0) discard;
+  // work in world units so the band keeps its thickness at any radius
+  vec2 w = p * uS;
+  float rr = r * uS;
   float a = atan(p.y, p.x);
   vec2 dir = p / max(r, 1e-3);
-  // radially scrolling noise (seam-free in cartesian space)
-  float n = fbm(p * 5.0 - dir * uTime * 1.6 + vec2(uTime * 0.2, 0.0));
-  float n2 = fbm(p * 9.0 + dir * uTime * 0.8);
-  float band = exp(-pow((r - 0.84) / 0.075, 2.0));
-  float tongues = smoothstep(0.42, 0.85, n) * smoothstep(0.5, 0.84, r) * (1.0 - smoothstep(0.92, 1.0, r));
-  float haze = smoothstep(0.15, 0.84, r) * (0.14 + 0.1 * n2);
-  float runes = step(0.55, fract(a / 6.2831853 * 20.0 + uTime * 0.12)) * exp(-pow((r - 0.62) / 0.022, 2.0)) * 0.55;
+  float n = fbm(w * 1.3 - dir * uTime * 1.6 + vec2(uTime * 0.2, 0.0));
+  float n2 = fbm(w * 2.4 + dir * uTime * 0.8);
+  float d = rr - uRing;
+  float band = exp(-pow(d / 0.2, 2.0));
+  float tongues = smoothstep(0.42, 0.85, n) * smoothstep(-1.2, -0.1, d) * (1.0 - smoothstep(0.15, 0.6, d));
+  float haze = smoothstep(0.0, uRing, rr) * (1.0 - smoothstep(-0.1, 0.3, d)) * (0.12 + 0.08 * n2);
+  float runes = step(0.55, fract(a / 6.2831853 * floor(uRing * 6.0) + uTime * 0.12)) * exp(-pow((rr - (uRing - 0.7)) / 0.06, 2.0)) * 0.55;
   float rays = 0.0;
   if (uEvo > 0.5) {
-    rays = pow(abs(cos(a * 9.0 + uTime * 0.6)), 14.0) * smoothstep(0.55, 0.9, r) * (1.0 - smoothstep(0.9, 1.0, r)) * 0.9;
+    rays = pow(abs(cos(a * 9.0 + uTime * 0.6)), 14.0) * smoothstep(-1.4, -0.2, d) * (1.0 - smoothstep(0.0, 0.5, d)) * 0.8;
     runes *= 1.3;
     haze *= 0.6;
   }
-  float i = band * (1.0 + 0.4 * n) + tongues * 1.1 + haze + runes + rays + uFlash * smoothstep(0.0, 1.0, r) * 0.6;
+  float i = band * (1.0 + 0.4 * n) + tongues * 1.1 + haze + runes + rays + uFlash * smoothstep(0.0, uRing, rr) * (1.0 - smoothstep(0.0, 0.4, d)) * 0.6;
+  i *= 1.0 - smoothstep(0.9, 1.0, r);
   vec3 c = mix(uDeep, uMid, clamp(band + tongues * n * 1.4 + rays, 0.0, 1.0));
   c = mix(c, uHot, clamp(band * band * (0.4 + n) + runes + uFlash * 0.5, 0.0, 1.0));
   gl_FragColor = vec4(c * i, clamp(i * 0.75, 0.0, 1.0));
@@ -143,6 +149,8 @@ class Aura extends Weapon {
       uTime: { value: 0 },
       uEvo: { value: 0 },
       uFlash: { value: 0 },
+      uS: { value: 2 },
+      uRing: { value: 1.7 },
       uDeep: { value: new THREE.Color("#a3180a") },
       uMid: { value: new THREE.Color("#ff6a1a") },
       uHot: { value: new THREE.Color("#ffd36b") },
@@ -211,7 +219,10 @@ class Aura extends Weapon {
     const r = this.radius;
     this.flash = Math.max(0, this.flash - dt * 3);
     this.ring!.position.set(p.x, 0.06, p.z);
-    this.ring!.scale.setScalar(r * 1.08);
+    const S = r + 0.8;
+    this.ring!.scale.setScalar(S);
+    this.ringMat!.uniforms.uS.value = S;
+    this.ringMat!.uniforms.uRing.value = r * 0.92;
     this.wall!.position.set(p.x, 0, p.z);
     this.wall!.scale.set(r * 0.92, ev ? 0.95 : 0.65, r * 0.92);
     this.ringMat!.uniforms.uTime.value = this.t;
@@ -301,9 +312,9 @@ class Aura extends Weapon {
     G.enemies.queryCircle(p.x, p.z, R, this.collect);
     for (const i of this.hits) hitEnemy(i, dmg * 3, this.def.id, { kb: 11, fromX: p.x, fromZ: p.z, color: "#ffe066" });
     this.flash = 1;
-    VFX.domes.spawn(p.x, p.z, R, 0.55, col("#ffb21f"), 0.8, 0.3, 6);
-    VFX.decals.spawn(p.x, p.z, R * 1.1, 0.5, col("#fff3b0"), DECAL_SHOCK, 1.1, 0, 0.3, 0.9);
-    VFX.decals.spawn(p.x, p.z, R, 0.35, col("#ffc21f"), DECAL_GLOW, 0.9, 0, 0.6, 0.2);
+    VFX.decals.spawn(p.x, p.z, R * 1.1, 0.55, col("#fff3b0"), DECAL_SHOCK, 1.2, 0, 0.25, 0.9);
+    VFX.decals.spawn(p.x, p.z, R * 0.95, 0.5, col("#ff9a1f"), DECAL_SHOCK, 0.8, 0, 0.15, 0.8);
+    VFX.decals.spawn(p.x, p.z, R, 0.3, col("#ffc21f"), DECAL_GLOW, 0.45, 0, 0.6, 0.2);
     VFX.sparkles.burst(p.x, 0.6, p.z, 10, R * 2.5, 3, 0.55, 0.9, col("#ffffff"), SPARK_STAR, -5, 2, R);
     VFX.sparkles.burst(p.x, 0.4, p.z, 18, R * 3, 2, 0.6, 0.5, col("#ffc21f"), SPARK_GLOW, -2, 2.5, R * 0.8);
     G.player.heal(G.player.stats.maxHp * 0.02);

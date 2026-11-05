@@ -62,7 +62,7 @@ void main() {
   float edge = smoothstep(0.86, 0.96, f);
   float body = 0.14 + (bands * 0.6 + bands2 * 0.4) * (1.0 - vP.y * 0.5);
   float g = (body + rim * 1.25) * (1.0 - edge);
-  vec3 c = vCol * g + vec3(1.0) * (bands * bands2 * 0.55 + rim * rim * 0.22) * (1.0 - edge);
+  vec3 c = vCol * g + vec3(1.0) * (bands * bands2 * 0.35 + rim * rim * 0.1) * (1.0 - edge);
   float a = clamp(g * uOcc, 0.0, 1.0);
   c += vCol * 0.1 * edge;
   a = max(a, edge * 0.8);
@@ -89,6 +89,7 @@ export class Domes {
   private head = 0;
   private used = 0;
   private dirty = false;
+  private aliveUntil = -1;
 
   constructor(
     scene: THREE.Scene,
@@ -146,6 +147,7 @@ export class Domes {
     A[o + 1] = z;
     A[o + 2] = vfxClock.t;
     A[o + 3] = Math.max(0.01, life);
+    if (vfxClock.t + life > this.aliveUntil) this.aliveUntil = vfxClock.t + life;
     B[o] = radius;
     B[o + 1] = height;
     B[o + 2] = Math.random() * 10;
@@ -160,6 +162,7 @@ export class Domes {
   update(): void {
     this.mat.uniforms.uTime.value = vfxClock.t;
     this.geo.instanceCount = this.used;
+    this.mesh.visible = vfxClock.t < this.aliveUntil;
     if (!this.dirty) return;
     for (const a of this.attrs) {
       a.clearUpdateRanges();
@@ -173,6 +176,7 @@ export class Domes {
     for (let i = 0; i < this.cap; i++) A[i * 4 + 2] = -1e6;
     this.head = 0;
     this.used = 0;
+    this.aliveUntil = -1;
     this.dirty = true;
     this.update();
   }

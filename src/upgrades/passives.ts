@@ -138,7 +138,7 @@ export const PASSIVES: PassiveDef[] = [
       c.arc(s * 0.55, s * 0.55, s * 0.035, 0, Math.PI * 2);
       c.fill();
     }),
-    describe: (l) => `สปีดโจมตี +8% คูลดาวน์ลดลง (รวม +${Math.round((1 / Math.pow(0.92, l) - 1) * 100)}%)`,
+    describe: (l) => `สปีดโจมตี +8% (คูลดาวน์ลดลงรวม ${Math.round((1 - Math.pow(0.92, l)) * 100)}%)`,
     lines: () => ["สปีดโจมตี +8%"],
     apply: (s, l) => (s.cooldown *= Math.pow(0.92, l)),
   },

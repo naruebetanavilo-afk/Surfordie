@@ -22,8 +22,8 @@ const LV = [
   { n: 4, dmg: 14, r: 2.4, dur: 3.5, cd: 3.0, spd: 3.6 },
   { n: 4, dmg: 18, r: 2.7, dur: 4.0, cd: 2.8, spd: 3.8 },
   { n: 5, dmg: 18, r: 2.7, dur: 4.5, cd: 2.6, spd: 4.0 },
-  { n: 5, dmg: 24, r: 3.0, dur: 4.5, cd: 2.4, spd: 4.2 },
-  { n: 6, dmg: 30, r: 3.2, dur: 5.0, cd: 2.2, spd: 4.5 },
+  { n: 5, dmg: 25, r: 3.0, dur: 4.5, cd: 2.4, spd: 4.2 },
+  { n: 6, dmg: 34, r: 3.2, dur: 5.0, cd: 2.2, spd: 4.5 },
 ];
 
 const MAX_SAWS = 14;
@@ -248,6 +248,8 @@ class Orbit extends Weapon {
       }
     }
     this.mesh.count = count;
+    this.mesh.visible = count > 0;
+    this.trail.visible = count > 0;
     this.mesh.instanceMatrix.needsUpdate = true;
     // trails
     const u = this.trailMat.uniforms;
@@ -330,8 +332,8 @@ export const orbitDef: WeaponDef = {
       "ใบเลื่อย +1 • หมุนเร็วขึ้น",
       "ดาเมจ +30% • รัศมีและระยะเวลาเพิ่ม",
       "ใบเลื่อย +1 • ระยะเวลา +0.5 วิ",
-      "ดาเมจ +33% • รัศมีเพิ่ม",
-      "ใบเลื่อย +1 • ดาเมจ +25%",
+      "ดาเมจ +39% • รัศมีเพิ่ม",
+      "ใบเลื่อย +1 • ดาเมจ +36%",
     ][l - 1] ?? "",
   lines: (l) =>
     levelLines(

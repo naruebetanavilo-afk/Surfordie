@@ -22,8 +22,8 @@ const LV = [
   { lines: 6, dmg: 19, range: 3.6, cd: 2.0, slow: 0.55 },
   { lines: 7, dmg: 25, range: 4.0, cd: 1.9, slow: 0.5 },
   { lines: 7, dmg: 25, range: 4.4, cd: 1.8, slow: 0.5 },
-  { lines: 8, dmg: 32, range: 4.8, cd: 1.7, slow: 0.45 },
-  { lines: 9, dmg: 42, range: 5.2, cd: 1.6, slow: 0.4 },
+  { lines: 8, dmg: 36, range: 4.8, cd: 1.7, slow: 0.45 },
+  { lines: 9, dmg: 48, range: 5.2, cd: 1.6, slow: 0.4 },
 ];
 
 const MAX_SPIKES = 720;
@@ -43,7 +43,7 @@ function thornGeometry(): THREE.BufferGeometry {
   const SIDES = 6;
   const H = 1.7;
   const BEND = 0.6;
-  const R0 = 0.24;
+  const R0 = 0.3;
   const pos: number[] = [];
   const colr: number[] = [];
   const idx: number[] = [];
@@ -299,6 +299,7 @@ class Spikes extends Weapon {
       count++;
     }
     mesh.count = count;
+    mesh.visible = count > 0;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     if (this.hitVol.size > 4000) this.hitVol.clear();
@@ -373,8 +374,8 @@ export const spikesDef: WeaponDef = {
       "แนวหนาม +1 • ปะทุถี่ขึ้น",
       "แนวหนาม +1 • ดาเมจ +32% • ระยะเพิ่ม",
       "ระยะ +10% • ปะทุถี่ขึ้น",
-      "แนวหนาม +1 • ดาเมจ +28%",
-      "แนวหนาม +1 • ดาเมจ +31% • ระยะเพิ่ม",
+      "แนวหนาม +1 • ดาเมจ +44%",
+      "แนวหนาม +1 • ดาเมจ +33% • ระยะเพิ่ม",
     ][l - 1] ?? "",
   lines: (l) =>
     levelLines(

@@ -98,6 +98,8 @@ export class Sparkles {
   private readonly attrs: THREE.InstancedBufferAttribute[];
   private head = 0;
   private used = 0;
+  /** clock time until which at least one particle may still be alive */
+  private aliveUntil = -1;
   private dirtyFrom = -1;
   private dirtyTo = -1;
   /** global spawn-count multiplier (lower on low quality) */
@@ -184,6 +186,7 @@ export class Sparkles {
     B[o + 1] = vy;
     B[o + 2] = vz;
     B[o + 3] = Math.max(0.01, life);
+    if (vfxClock.t + life > this.aliveUntil) this.aliveUntil = vfxClock.t + life;
     C[o] = color.r;
     C[o + 1] = color.g;
     C[o + 2] = color.b;
@@ -244,6 +247,8 @@ export class Sparkles {
   update(): void {
     this.mat.uniforms.uTime.value = vfxClock.t;
     this.geo.instanceCount = this.used;
+    // no live particles: skip the draw call
+    this.mesh.visible = vfxClock.t < this.aliveUntil;
     if (this.dirtyFrom < 0) return;
     const start = this.dirtyFrom * 4;
     const count = (this.dirtyTo - this.dirtyFrom + 1) * 4;
@@ -263,6 +268,8 @@ export class Sparkles {
     this.aA.needsUpdate = true;
     this.head = 0;
     this.used = 0;
+    this.aliveUntil = -1;
+    this.mesh.visible = false;
     this.dirtyFrom = -1;
     this.dirtyTo = -1;
     this.geo.instanceCount = 0;

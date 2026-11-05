@@ -161,6 +161,7 @@ export class Bolts {
   }
 
   update(dt: number): void {
+    this.mesh.visible = this.anyActive;
     if (!this.anyActive) return;
     let any = false;
     for (let b = 0; b < this.cap; b++) {
@@ -230,5 +231,6 @@ export class Bolts {
     for (let v = 0; v < this.cap * VPB; v++) this.colA[v * 4 + 3] = 0;
     this.colAttr.needsUpdate = true;
     this.anyActive = false;
+    this.mesh.visible = false;
   }
 }

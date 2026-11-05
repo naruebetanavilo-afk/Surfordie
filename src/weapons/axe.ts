@@ -41,12 +41,12 @@ type AxeState = {
   size: number;
 };
 
-function axeGeometry(): THREE.BufferGeometry {
+function axeGeometry(evolved: boolean): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   // handle + grip wrap + pommel
-  parts.push(prep(paint(new THREE.BoxGeometry(0.1, 0.08, 1.05).translate(0, 0, -0.12), "#8a5a2b")));
-  parts.push(prep(paint(new THREE.BoxGeometry(0.13, 0.1, 0.26).translate(0, 0, -0.48), "#c0392b")));
-  parts.push(prep(paint(new THREE.BoxGeometry(0.15, 0.11, 0.08).translate(0, 0, -0.65), "#5a3a1a")));
+  parts.push(prep(paint(new THREE.BoxGeometry(0.1, 0.08, 1.05).translate(0, 0, -0.12), evolved ? "#3a2210" : "#8a5a2b")));
+  parts.push(prep(paint(new THREE.BoxGeometry(0.13, 0.1, 0.26).translate(0, 0, -0.48), evolved ? "#ffc21f" : "#c0392b")));
+  parts.push(prep(paint(new THREE.BoxGeometry(0.15, 0.11, 0.08).translate(0, 0, -0.65), evolved ? "#ffc21f" : "#5a3a1a")));
   // double-bit head (shape in XY, extruded, laid flat)
   const sh = new THREE.Shape();
   sh.moveTo(0.08, 0.1);
@@ -66,8 +66,8 @@ function axeGeometry(): THREE.BufferGeometry {
   const hp = prep(head);
   const pos = hp.attributes.position;
   const cols = new Float32Array(pos.count * 3);
-  const steel = new THREE.Color("#aeb9c8");
-  const edge = new THREE.Color("#ffffff");
+  const steel = new THREE.Color(evolved ? "#e8401a" : "#aeb9c8");
+  const edge = new THREE.Color(evolved ? "#ffe066" : "#ffffff");
   const tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const ax = Math.abs(pos.getX(i));
@@ -79,7 +79,7 @@ function axeGeometry(): THREE.BufferGeometry {
   hp.setAttribute("color", new THREE.BufferAttribute(cols, 3));
   parts.push(hp);
   // socket
-  parts.push(prep(paint(new THREE.BoxGeometry(0.2, 0.13, 0.26).translate(0, 0, 0.36), "#4a5262")));
+  parts.push(prep(paint(new THREE.BoxGeometry(0.2, 0.13, 0.26).translate(0, 0, 0.36), evolved ? "#2a1a14" : "#4a5262")));
   const g = mergeGeometries(parts, false)!;
   g.computeVertexNormals();
   return g;
@@ -87,16 +87,10 @@ function axeGeometry(): THREE.BufferGeometry {
 
 function ensureKinds(): void {
   if (G.projectiles.hasKind("axe")) return;
-  const geo = axeGeometry();
   const mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: weaponToonRamp(), emissive: new THREE.Color("#2a2620") });
-  G.projectiles.registerKind("axe", { geometry: geo, material: mat, spin: SPIN, capacity: 64 });
-  const evMat = new THREE.MeshToonMaterial({
-    vertexColors: true,
-    gradientMap: weaponToonRamp(),
-    color: new THREE.Color("#ffb38a"),
-    emissive: new THREE.Color("#6a1400"),
-  });
-  G.projectiles.registerKind("axeStorm", { geometry: geo, material: evMat, spin: SPIN * 1.3, capacity: 64 });
+  G.projectiles.registerKind("axe", { geometry: axeGeometry(false), material: mat, spin: SPIN, capacity: 64 });
+  const evMat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: weaponToonRamp(), emissive: new THREE.Color("#7a2000") });
+  G.projectiles.registerKind("axeStorm", { geometry: axeGeometry(true), material: evMat, spin: SPIN * 1.3, capacity: 64 });
 }
 
 interface Pending {

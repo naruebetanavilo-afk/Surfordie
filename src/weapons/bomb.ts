@@ -42,7 +42,7 @@ const HOT = "#ff3fd2";
 const CORE = "#ffd0fa";
 const VIOLET = "#ff78e8";
 const SCORCH = "#2a0b3a";
-const EV_MAIN = "#ff4fd8";
+const EV_MAIN = "#ff2fb8";
 const EV_ACC = "#6ef3ff";
 
 interface Orb {
@@ -280,7 +280,7 @@ class Bomb extends Weapon {
     const main = col(ev ? EV_MAIN : MAGENTA);
     const accent = col(ev ? EV_ACC : HOT);
     const sp = VFX.sparkles;
-    VFX.domes.spawn(x, z, r * 0.8, 0.5 * power + 0.1, main, 0.9, 0.62, 10);
+    VFX.domes.spawn(x, z, r * 0.72, 0.5 * power + 0.1, main, 0.9, 0.66, 10);
     VFX.decals.spawn(x, z, r * 1.15, 1.1 * power, accent, DECAL_VORTEX, 1.2, 5, 0.35, 0.2);
     VFX.decals.spawn(x, z, r * 1.4, 0.5, col(CORE), DECAL_SHOCK, 0.9 * power, 0, 0.12, 0.95);
     VFX.decals.spawn(x, z, r * 1.5, 0.4, main, DECAL_GLOW, 0.7 * power, 0, 0.55, 0.15);

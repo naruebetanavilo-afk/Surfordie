@@ -4,7 +4,7 @@ import type { Proj } from "../combat/Projectiles";
 import { Weapon, type WeaponDef } from "./types";
 import { iconBg } from "../ui/icons";
 import { glowTexture } from "../fx/textures";
-import { VFX, col, SPARK_GLOW, SPARK_STAR, DECAL_VORTEX, DECAL_SHOCK } from "./vfx";
+import { VFX, col, SPARK_GLOW, SPARK_STAR, DECAL_VORTEX, DECAL_SHOCK, DECAL_GLOW } from "./vfx";
 import { SpriteBatch } from "./vfx/SpriteBatch";
 import { softGlowTex } from "./vfx/textures";
 import { levelLines } from "./util";
@@ -137,7 +137,8 @@ class Missile extends Weapon {
 
   private miniBlast(x: number, z: number): void {
     const r = 1.4 * this.area(1);
-    G.fx.explosion(x, z, r, "#c77dff", 0);
+    VFX.decals.spawn(x, z, r * 1.2, 0.3, col("#c77dff"), DECAL_GLOW, 1, 0, 0.5, 0.2);
+    VFX.sparkles.burst(x, 0.4, z, 8, r * 3, 2, 0.45, 0.4, col("#c77dff"), SPARK_GLOW, -3, 2.5);
     VFX.decals.spawn(x, z, r * 1.1, 0.55, col("#d65cff"), DECAL_VORTEX, 0.9, 6, 0.4, 0.25);
     VFX.decals.spawn(x, z, r * 1.25, 0.3, col("#f3d9ff"), DECAL_SHOCK, 0.7, 0, 0.2, 0.9);
     VFX.sparkles.burst(x, 0.6, z, 2, 3, 3, 0.4, 0.7, col("#ffffff"), SPARK_STAR, -6, 2);

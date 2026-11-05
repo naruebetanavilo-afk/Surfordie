@@ -132,6 +132,7 @@ export class Decals {
   private head = 0;
   private used = 0;
   private dirty = false;
+  private aliveUntil = -1;
   private layerY: number;
 
   constructor(
@@ -211,6 +212,7 @@ export class Decals {
     A[o + 1] = z;
     A[o + 2] = vfxClock.t;
     A[o + 3] = Math.max(0.01, life);
+    if (vfxClock.t + life > this.aliveUntil) this.aliveUntil = vfxClock.t + life;
     B[o] = radius;
     B[o + 1] = Math.random() * Math.PI * 2;
     B[o + 2] = spin;
@@ -230,6 +232,7 @@ export class Decals {
   update(): void {
     this.mat.uniforms.uTime.value = vfxClock.t;
     this.geo.instanceCount = this.used;
+    this.mesh.visible = vfxClock.t < this.aliveUntil;
     if (!this.dirty) return;
     // decal spawns are rare (a few per frame at most): upload the whole small buffer
     for (const a of this.attrs) {
@@ -244,6 +247,7 @@ export class Decals {
     for (let i = 0; i < this.cap; i++) A[i * 4 + 2] = -1e6;
     this.head = 0;
     this.used = 0;
+    this.aliveUntil = -1;
     this.dirty = true;
     this.update();
   }
