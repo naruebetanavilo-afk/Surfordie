@@ -123,9 +123,15 @@ export class AudioSys {
 
   /** create / resume the AudioContext; must be called from a user gesture */
   unlock(): void {
-    if (!this.ctx && !this.create()) return;
-    this.subscribe();
-    this.updateSuspend();
+    if (!this.ctx) {
+      if (!this.create()) return;
+      this.subscribe();
+      this.updateSuspend();
+      return;
+    }
+    // every tap lands here (joystick!): only act when the context needs waking,
+    // e.g. iOS "interrupted" after a call or a resume refused outside a gesture
+    if (this.ctx.state !== "running") this.updateSuspend();
   }
 
   private create(): boolean {
