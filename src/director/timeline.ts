@@ -23,9 +23,9 @@ export interface Phase {
 
 export const PHASES: Phase[] = [
   // 0:00 gentle start — only shamblers trickle in
-  { from: 0, to: 60, alive: [14, 48], weights: { shambler: 1 }, cluster: [1, 2], elite: 0 },
+  { from: 0, to: 60, alive: [18, 52], weights: { shambler: 1 }, cluster: [1, 3], elite: 0 },
   // 1:00 runners and the first spirits
-  { from: 60, to: 120, alive: [48, 95], weights: { shambler: 6, runner: 2.5, ghost: 1 }, cluster: [1, 3], elite: 0 },
+  { from: 60, to: 120, alive: [52, 95], weights: { shambler: 6, runner: 2.5, ghost: 1 }, cluster: [1, 3], elite: 0 },
   // 2:00 tougher crowd + first elites
   {
     from: 120,
