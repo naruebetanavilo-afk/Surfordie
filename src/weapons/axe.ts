@@ -148,7 +148,7 @@ class Axe extends Weapon {
   private throwAxe(L: (typeof LV)[number], a: number): void {
     const p = G.player;
     const ev = this.evolved;
-    const size = L.size * this.area(1) * (ev ? 1.5 : 1);
+    const size = L.size * this.area(1) * (ev ? 1.25 : 1);
     const v0 = this.projSpeed(15);
     const range = L.range * (0.6 + 0.4 * this.area(1));
     const st: AxeState = {
