@@ -9,6 +9,8 @@ export interface GroundUniforms {
   uCenter: { value: THREE.Vector2 };
   /** visible half-width at the far edge, far extent (world units) */
   uView: { value: THREE.Vector2 };
+  /** per-channel multiplier cancelling character-only lights on the ground */
+  uLightComp?: { value: THREE.Vector3 };
 }
 
 /** sRGB hex -> GLSL vec3 literal in linear space */
@@ -32,6 +34,7 @@ export function createGround(uniforms: GroundUniforms): THREE.Mesh {
     shader.uniforms.uTime = uniforms.uTime;
     shader.uniforms.uCenter = uniforms.uCenter;
     shader.uniforms.uView = uniforms.uView;
+    shader.uniforms.uLightComp = uniforms.uLightComp ?? { value: new THREE.Vector3(1, 1, 1) };
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vWPos;")
       .replace(
@@ -46,6 +49,7 @@ varying vec3 vWPos;
 uniform float uTime;
 uniform vec2 uCenter;
 uniform vec2 uView;
+uniform vec3 uLightComp;
 float gHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float gNoise(vec2 p){
   vec2 i = floor(p); vec2 f = fract(p);
@@ -86,7 +90,7 @@ float gNoise(vec2 p){
   float dist = length(q);
   col *= mix(1.0, 0.68, smoothstep(0.32, 1.05, dist));
 
-  diffuseColor.rgb = col;
+  diffuseColor.rgb = col * uLightComp;
 }`,
       );
   };

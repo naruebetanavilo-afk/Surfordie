@@ -13,6 +13,8 @@ const FRAME_HALF_W = 5.6;
 const FRAME_HALF_V = 7.4;
 /** tallest thing we expect to walk in from the bottom edge (bosses) */
 const SPAWN_HEIGHT = 2.4;
+/** fill light offset from the target: camera side (+Z), from the right, fairly low */
+const FILL_DIR = new THREE.Vector3(6, 4.5, 10);
 
 /**
  * Owns renderer, scene, camera, lights and the infinite ground.
@@ -25,6 +27,12 @@ export class World {
   ground: THREE.Mesh;
   decor: Decor;
   sun: THREE.DirectionalLight;
+  /**
+   * Weak cool fill from the camera's lower-right: lifts the sides/backs that
+   * face away from the warm key (enemies walking up from the bottom of the
+   * screen) so the horde reads well from every direction.
+   */
+  fill: THREE.DirectionalLight;
   hemi: THREE.HemisphereLight;
   private vignette: THREE.Mesh;
 
@@ -71,6 +79,7 @@ export class World {
     uTime: { value: 0 },
     uCenter: { value: new THREE.Vector2() },
     uView: { value: new THREE.Vector2(6, 16) },
+    uLightComp: { value: new THREE.Vector3(1, 1, 1) },
   };
 
   constructor(canvas: HTMLCanvasElement) {
@@ -105,8 +114,13 @@ export class World {
     this.sun.position.set(-6, 14, 8);
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
+    this.fill = new THREE.DirectionalLight("#bcd0ff", 0.8);
+    this.fill.position.set(FILL_DIR.x, FILL_DIR.y, FILL_DIR.z);
+    this.scene.add(this.fill);
+    this.scene.add(this.fill.target);
 
     this.ground = createGround(this.groundUniforms);
+    this.compensateGroundFill();
     this.scene.add(this.ground);
 
     this.decor = new Decor(this.scene);
@@ -117,6 +131,20 @@ export class World {
     this.resize();
     window.addEventListener("resize", () => this.resize());
     window.visualViewport?.addEventListener("resize", () => this.resize());
+  }
+
+  /**
+   * The ground is lit by the same lights as the characters; cancel the fill
+   * light's contribution on the (flat, up-facing) ground so the grass keeps
+   * its tuned colours while characters get the extra lift.
+   */
+  private compensateGroundFill(): void {
+    const up = (l: THREE.DirectionalLight): number =>
+      Math.max(0, l.position.clone().sub(l.target.position).normalize().y) * l.intensity;
+    const base = new THREE.Color().copy(this.hemi.color).multiplyScalar(this.hemi.intensity);
+    base.add(new THREE.Color().copy(this.sun.color).multiplyScalar(up(this.sun)));
+    const withFill = base.clone().add(new THREE.Color().copy(this.fill.color).multiplyScalar(up(this.fill)));
+    this.groundUniforms.uLightComp.value.set(base.r / withFill.r, base.g / withFill.g, base.b / withFill.b);
   }
 
   setQuality(q: Quality): void {
@@ -241,6 +269,8 @@ export class World {
     this.groundUniforms.uCenter.value.set(this.camTarget.x, this.camTarget.z);
     this.sun.position.set(this.camTarget.x - 6, 14, this.camTarget.z + 8);
     this.sun.target.position.set(this.camTarget.x, 0, this.camTarget.z);
+    this.fill.position.set(this.camTarget.x + FILL_DIR.x, FILL_DIR.y, this.camTarget.z + FILL_DIR.z);
+    this.fill.target.position.set(this.camTarget.x, 0, this.camTarget.z);
     this.decor.update(this.camTarget.x, this.camTarget.z + this.lookOffZ, this.viewHalfW, this.viewHalfH);
   }
 
