@@ -34,6 +34,8 @@ export interface EnemyDef {
   boss?: boolean;
   /** chance (0..1) to drop a coin on death. default 0.03 */
   coinChance?: number;
+  /** flies over the horde: skips crowd separation with other enemies */
+  flying?: boolean;
   /**
    * Optional AI hook, called every frame for each living enemy of this type.
    * Return true if you moved the enemy yourself (skips default chase steering).

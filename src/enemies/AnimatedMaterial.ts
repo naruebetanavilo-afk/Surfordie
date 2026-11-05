@@ -7,7 +7,8 @@ let gradient: THREE.DataTexture | null = null;
 /** 3-band toon ramp shared by characters */
 export function toonGradient(): THREE.DataTexture {
   if (gradient) return gradient;
-  const data = new Uint8Array([120, 120, 120, 255, 200, 200, 200, 255, 255, 255, 255, 255]);
+  // shadow band lifted (120 -> 150) so enemies seen from behind still read clearly
+  const data = new Uint8Array([150, 150, 150, 255, 210, 210, 210, 255, 255, 255, 255, 255]);
   gradient = new THREE.DataTexture(data, 3, 1, THREE.RGBAFormat);
   gradient.minFilter = THREE.NearestFilter;
   gradient.magFilter = THREE.NearestFilter;
@@ -65,6 +66,7 @@ attribute float aPart;
 attribute vec3 aPivot;
 attribute vec4 aAnim;
 varying float vFlash;
+varying float vGlow;
 mat3 sfdRotX(float a){ float c = cos(a); float s = sin(a); return mat3(1.0,0.0,0.0, 0.0,c,s, 0.0,-s,c); }
 mat3 sfdRotZ(float a){ float c = cos(a); float s = sin(a); return mat3(c,s,0.0, -s,c,0.0, 0.0,0.0,1.0); }`,
       )
@@ -73,12 +75,15 @@ mat3 sfdRotZ(float a){ float c = cos(a); float s = sin(a); return mat3(c,s,0.0, 
         `float sfdT = uTime * 6.0 * max(aAnim.w, 0.0001) + aAnim.x;
 float sfdSw = sin(sfdT) * step(0.001, aAnim.w);
 float sfdDie = aAnim.z;
+// part ids >= 10 are glowing variants of (id - 10), see PartBuilder.glow()
+float sfdP = aPart > 9.5 ? aPart - 10.0 : aPart;
+vGlow = step(9.5, aPart);
 mat3 sfdPart = mat3(1.0);
-if (aPart > 0.5 && aPart < 1.5) sfdPart = sfdRotX(-uArmRaise + sfdSw * uArmAmp);
-else if (aPart > 1.5 && aPart < 2.5) sfdPart = sfdRotX(-uArmRaise - sfdSw * uArmAmp);
-else if (aPart > 2.5 && aPart < 3.5) sfdPart = sfdRotX(sfdSw * uLegAmp);
-else if (aPart > 3.5 && aPart < 4.5) sfdPart = sfdRotX(-sfdSw * uLegAmp);
-else if (aPart > 4.5 && aPart < 5.5) sfdPart = sfdRotZ(sin(sfdT * 0.5 + 1.3) * 0.15);
+if (sfdP > 0.5 && sfdP < 1.5) sfdPart = sfdRotX(-uArmRaise + sfdSw * uArmAmp);
+else if (sfdP > 1.5 && sfdP < 2.5) sfdPart = sfdRotX(-uArmRaise - sfdSw * uArmAmp);
+else if (sfdP > 2.5 && sfdP < 3.5) sfdPart = sfdRotX(sfdSw * uLegAmp);
+else if (sfdP > 3.5 && sfdP < 4.5) sfdPart = sfdRotX(-sfdSw * uLegAmp);
+else if (sfdP > 4.5 && sfdP < 5.5) sfdPart = sfdRotZ(sin(sfdT * 0.5 + 1.3) * 0.15);
 mat3 sfdBody = sfdRotZ(sin(sfdT * 0.5) * uSway);
 mat3 sfdDieR = sfdRotX(-sfdDie * 1.5);
 vec3 objectNormal = sfdDieR * sfdBody * sfdPart * vec3( normal );
@@ -96,7 +101,9 @@ transformed.y -= sfdDie * 0.35;
 vFlash = aAnim.y;`,
       );
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying float vFlash;")
+      .replace("#include <common>", "#include <common>\nvarying float vFlash;\nvarying float vGlow;")
+      // glowing parts skip toon lighting: output their (linear) base colour, slightly boosted
+      .replace("#include <opaque_fragment>", "outgoingLight = mix(outgoingLight, diffuseColor.rgb * 1.25, vGlow);\n#include <opaque_fragment>")
       .replace(
         "#include <dithering_fragment>",
         "#include <dithering_fragment>\ngl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0, 0.97, 0.92), clamp(vFlash, 0.0, 1.0));",

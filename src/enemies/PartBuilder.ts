@@ -15,6 +15,13 @@ export const PART = {
   STATIC: 6, // never animated by part rotation (still follows body sway/death)
 } as const;
 
+/** offset added to a part id to mark it as glowing (unlit, keeps full colour on shaded sides) */
+export const GLOW = 10;
+/** mark a part as glowing: `b.sphere(r, "#ff0", glow(PART.HEAD), ...)` */
+export function glow(part: number): number {
+  return part + GLOW;
+}
+
 type V3 = [number, number, number];
 
 export interface PartOpts {

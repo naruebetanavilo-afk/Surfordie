@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { PART, PartBuilder } from "./PartBuilder";
+import { PART, glow, PartBuilder } from "./PartBuilder";
 
 /**
  * Procedural low-poly models for the enemy roster. Every builder returns ONE
@@ -100,7 +100,7 @@ export function figure(b: PartBuilder, c: FigureColors, o: FigureOpts = {}): Fig
 function eyes(b: PartBuilder, f: FigureInfo, color: string, size: number, spread: number, dy = 0.05, pupil?: string): void {
   const z = f.headZ + f.headR * 0.84;
   for (const s of [-1, 1]) {
-    b.sphere(size, color, PART.HEAD, { pos: [s * spread, f.headY + dy, z], pivot: [0, f.neck, 0] }, 6);
+    b.sphere(size, color, pupil ? PART.HEAD : glow(PART.HEAD), { pos: [s * spread, f.headY + dy, z], pivot: [0, f.neck, 0] }, 6);
     if (pupil) b.sphere(size * 0.5, pupil, PART.HEAD, { pos: [s * spread, f.headY + dy, z + size * 0.75], pivot: [0, f.neck, 0] }, 5);
   }
 }
@@ -221,14 +221,14 @@ export function buildSpitter(): THREE.BufferGeometry {
   // face bulges forward out of the hood
   b.sphere(f.headR * 0.95, skin, PART.HEAD, headPart(f, [0, f.headY - 0.02, f.headZ + 0.06]), 10);
   // glowing eyes + swollen toxic throat sac
-  b.sphere(0.06, "#f4ff3a", PART.HEAD, headPart(f, [-0.09, f.headY + 0.05, f.headZ + 0.27]), 6);
-  b.sphere(0.06, "#f4ff3a", PART.HEAD, headPart(f, [0.09, f.headY + 0.05, f.headZ + 0.27]), 6);
-  b.sphere(0.24, "#c8ff4d", PART.HEAD, headPart(f, [0, f.headY - 0.2, f.headZ + 0.2]), 10);
+  b.sphere(0.06, "#f4ff3a", glow(PART.HEAD), headPart(f, [-0.09, f.headY + 0.05, f.headZ + 0.27]), 6);
+  b.sphere(0.06, "#f4ff3a", glow(PART.HEAD), headPart(f, [0.09, f.headY + 0.05, f.headZ + 0.27]), 6);
+  b.sphere(0.24, "#c8ff4d", glow(PART.HEAD), headPart(f, [0, f.headY - 0.2, f.headZ + 0.2]), 10);
   b.sphere(0.06, "#e9ff9a", PART.HEAD, headPart(f, [0.07, f.headY - 0.14, f.headZ + 0.35]), 6);
   b.sphere(0.045, "#8cff3a", PART.HEAD, headPart(f, [-0.05, f.headY - 0.36, f.headZ + 0.26]), 5);
   // toxic pustules on the back + belt
-  b.sphere(0.12, "#a6ff4d", PART.BODY, { pos: [-0.12, 0.84, -0.17] }, 8);
-  b.sphere(0.09, "#d4ff6a", PART.BODY, { pos: [0.14, 0.72, -0.16] }, 8);
+  b.sphere(0.12, "#a6ff4d", glow(PART.BODY), { pos: [-0.12, 0.84, -0.17] }, 8);
+  b.sphere(0.09, "#d4ff6a", glow(PART.BODY), { pos: [0.14, 0.72, -0.16] }, 8);
   b.box(0.54, 0.06, 0.34, "#3d2060", PART.BODY, { pos: [0, 0.48, 0] });
   // robe skirt
   b.cyl(0.26, 0.34, 0.24, "#8a46c4", PART.BODY, { pos: [0, 0.38, 0] }, 8);
@@ -257,7 +257,7 @@ export function buildBloater(): THREE.BufferGeometry {
     [0.4, 0.68, 0.3, 0.07, "#ff5f86"],
     [-0.42, 0.95, 0.2, 0.08, "#ff5f86"],
   ];
-  for (const [x, y, z, r, c] of spots) b.sphere(r, c, PART.BODY, { pos: [x, y, z] }, 6);
+  for (const [x, y, z, r, c] of spots) b.sphere(r, c, glow(PART.BODY), { pos: [x, y, z] }, 6);
   for (let k = 0; k < 4; k++) b.box(0.03, 0.12, 0.03, "#3b2a1a", PART.BODY, { pos: [-0.12 + k * 0.08, 0.84, 0.54], rot: [0, 0, 0.4] });
   b.box(0.3, 0.03, 0.03, "#3b2a1a", PART.BODY, { pos: [0, 0.84, 0.545] });
   // stubby arms
@@ -294,8 +294,8 @@ export function buildMummy(): THREE.BufferGeometry {
   b.box(0.06, 0.3, 0.02, wrap, PART.ARM_R, { pos: [f.shoulderX + 0.05, f.shoulder - f.armLen - 0.1, -0.04], pivot: [f.shoulderX, f.shoulder, 0] });
   // dark eye slit + glowing cyan eyes + gold amulet
   b.box(0.36, 0.09, 0.05, "#2a2230", PART.HEAD, headPart(f, [0, f.headY + 0.03, f.headR * 0.85]));
-  b.sphere(0.055, "#5ff3ff", PART.HEAD, headPart(f, [-0.09, f.headY + 0.03, f.headR * 0.93]), 6);
-  b.sphere(0.055, "#5ff3ff", PART.HEAD, headPart(f, [0.09, f.headY + 0.03, f.headR * 0.93]), 6);
+  b.sphere(0.055, "#5ff3ff", glow(PART.HEAD), headPart(f, [-0.09, f.headY + 0.03, f.headR * 0.93]), 6);
+  b.sphere(0.055, "#5ff3ff", glow(PART.HEAD), headPart(f, [0.09, f.headY + 0.03, f.headR * 0.93]), 6);
   b.box(0.12, 0.12, 0.04, "#ffcc33", PART.BODY, { pos: [0, f.neck - 0.14, f.front + 0.02], rot: [0, 0, Math.PI / 4] });
   b.sphere(0.04, "#2fb8ff", PART.BODY, { pos: [0, f.neck - 0.14, f.front + 0.05] }, 5);
   return b.build();
@@ -374,7 +374,7 @@ export function buildWitchBoss(): THREE.BufferGeometry {
   }
   b.cone(0.7, 1.15, robe, PART.BODY, { pos: [0, 0.58, 0] }, 12);
   // glowing toxic hem + purple sash
-  b.cyl(0.66, 0.72, 0.1, "#9dff4a", PART.BODY, { pos: [0, 0.07, 0] }, 12);
+  b.cyl(0.66, 0.72, 0.1, "#9dff4a", glow(PART.BODY), { pos: [0, 0.07, 0] }, 12);
   b.cyl(0.4, 0.44, 0.08, "#6233a0", PART.BODY, { pos: [0, 0.92, 0] }, 12);
   b.cyl(0.36, 0.42, 0.42, "#56a565", PART.BODY, { pos: [0, 1.15, -0.02] }, 10);
   // ragged moss strands
@@ -401,8 +401,8 @@ export function buildWitchBoss(): THREE.BufferGeometry {
   const hy = 1.62;
   b.sphere(0.27, skin, PART.HEAD, { pos: [0, hy, 0.1], pivot: pv }, 12);
   b.cone(0.06, 0.26, "#8cc24a", PART.HEAD, { pos: [0, hy - 0.04, 0.42], rot: [1.75, 0, 0], pivot: pv }, 6);
-  b.sphere(0.05, "#c6ff3a", PART.HEAD, { pos: [-0.1, hy + 0.06, 0.33], pivot: pv }, 6);
-  b.sphere(0.05, "#c6ff3a", PART.HEAD, { pos: [0.1, hy + 0.06, 0.33], pivot: pv }, 6);
+  b.sphere(0.05, "#c6ff3a", glow(PART.HEAD), { pos: [-0.1, hy + 0.06, 0.33], pivot: pv }, 6);
+  b.sphere(0.05, "#c6ff3a", glow(PART.HEAD), { pos: [0.1, hy + 0.06, 0.33], pivot: pv }, 6);
   b.box(0.14, 0.03, 0.02, "#2a1030", PART.HEAD, { pos: [0, hy - 0.15, 0.34], pivot: pv });
   b.cyl(0.56, 0.56, 0.05, "#6233a0", PART.HEAD, { pos: [0, hy + 0.2, 0.06], pivot: pv }, 16);
   b.cone(0.3, 0.7, "#6233a0", PART.HEAD, { pos: [0, hy + 0.55, -0.02], rot: [-0.25, 0, 0.1], pivot: pv }, 10);
@@ -442,7 +442,7 @@ export function buildKingBoss(): THREE.BufferGeometry {
   // skull face: dark sockets, red glow, jaw
   for (const s of [-1, 1]) {
     b.sphere(0.085, "#1a1020", PART.HEAD, headPart(f, [s * 0.11, f.headY + 0.03, f.headZ + 0.21]), 8);
-    b.sphere(0.04, "#ff3030", PART.HEAD, headPart(f, [s * 0.11, f.headY + 0.03, f.headZ + 0.28]), 5);
+    b.sphere(0.04, "#ff3030", glow(PART.HEAD), headPart(f, [s * 0.11, f.headY + 0.03, f.headZ + 0.28]), 5);
   }
   b.box(0.26, 0.1, 0.16, bone, PART.HEAD, headPart(f, [0, f.headY - 0.21, f.headZ + 0.1]));
   for (let k = 0; k < 4; k++) b.box(0.025, 0.05, 0.02, "#1a1020", PART.HEAD, headPart(f, [-0.075 + k * 0.05, f.headY - 0.15, f.headZ + 0.27]));
@@ -453,6 +453,6 @@ export function buildKingBoss(): THREE.BufferGeometry {
     const a = (k / 5) * Math.PI * 2;
     b.cone(0.06, 0.18, "#ffcc33", PART.HEAD, headPart(f, [Math.sin(a) * 0.2, cy + 0.14, f.headZ - 0.02 + Math.cos(a) * 0.2]));
   }
-  b.sphere(0.045, "#ff2f5a", PART.HEAD, headPart(f, [0, cy, f.headZ + 0.22]), 6);
+  b.sphere(0.045, "#ff2f5a", glow(PART.HEAD), headPart(f, [0, cy, f.headZ + 0.22]), 6);
   return b.build();
 }
