@@ -110,6 +110,8 @@ export class Hud {
   private announceText: HTMLDivElement;
   private hint: HTMLDivElement;
   private fps: HTMLDivElement;
+  /** HUD blocks that cover the playfield (top bar, kills/pause, slots, boss bars) */
+  private bandEls: HTMLElement[] = [];
 
   private last: Record<string, string | number | boolean> = {};
   private lastRT = 0;
@@ -188,6 +190,7 @@ export class Hud {
     this.bossBox = el("div", "hud-bosses", this.root);
     for (let k = 0; k < MAX_BOSS_BARS; k++) this.bossViews.push(this.makeBossView(k));
     this.bossMore = el("div", "hud-boss-more hidden", this.bossBox);
+    this.bandEls.push(top, sub, slots, this.bossBox);
 
     // ---------------------------------------------------------- toasts, banner, hint
     this.toastsEl = el("div", "hud-toasts", this.root);
@@ -262,6 +265,28 @@ export class Hud {
 
   show(on: boolean): void {
     this.root.classList.toggle("hidden", !on);
+  }
+
+  /**
+   * Screen rectangles (CSS px, [left, top, right, bottom] per block) of the HUD
+   * blocks that sit over the playfield, so canvas markers (boss arrows) can
+   * stay clear of them. Reads layout: call rarely (on resize / ~2x per second).
+   * Returns the number of rects written.
+   */
+  bandRects(out: Float32Array): number {
+    if (this.root.classList.contains("hidden")) return 0;
+    let n = 0;
+    for (const e of this.bandEls) {
+      if (n * 4 + 4 > out.length) break;
+      const r = e.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) continue;
+      out[n * 4] = r.left;
+      out[n * 4 + 1] = r.top;
+      out[n * 4 + 2] = r.right;
+      out[n * 4 + 3] = r.bottom;
+      n++;
+    }
+    return n;
   }
 
   reset(): void {
