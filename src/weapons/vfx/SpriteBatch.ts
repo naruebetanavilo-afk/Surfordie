@@ -82,6 +82,8 @@ export class SpriteBatch {
   }
 
   end(): void {
+    // skip the (empty) draw call entirely when nothing was added
+    this.mesh.visible = this.mesh.count > 0;
     if (this.mesh.count === 0) return;
     this.mesh.instanceMatrix.clearUpdateRanges();
     this.mesh.instanceMatrix.addUpdateRange(0, this.mesh.count * 16);

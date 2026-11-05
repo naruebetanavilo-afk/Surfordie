@@ -66,7 +66,7 @@ void main() {
   float a = clamp(g * uOcc, 0.0, 1.0);
   c += vCol * 0.1 * edge;
   a = max(a, edge * 0.8);
-  c = mix(c, vec3(1.0, 0.92, 1.0) * 1.2, flash * 0.55);
+  c = mix(c, vCol * 0.7 + vec3(0.45, 0.35, 0.45), flash * 0.5);
   a = max(a, flash * 0.5);
   float m = fade * vI;
   // alpha fades faster than colour: a dying dome turns into pure glow, not a grey film
