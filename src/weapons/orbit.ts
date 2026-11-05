@@ -8,6 +8,7 @@ import { VFX, col, SPARK_STAR } from "./vfx";
 import { weaponToonRamp, paint, prep } from "./vfx/toon";
 import { levelLines, liveSlot } from "./util";
 import { evolvedFrame, glow, INK } from "./iconkit";
+import { uploadInstances, uploadItems } from "../core/gpu";
 
 /**
  * ใบเลื่อยวงโคจร (Orbit Saws) — reference for a persistent-mesh weapon.
@@ -251,7 +252,7 @@ class Orbit extends Weapon {
     this.mesh.count = count;
     this.mesh.visible = count > 0;
     this.trail.visible = count > 0;
-    this.mesh.instanceMatrix.needsUpdate = true;
+    uploadInstances(this.mesh);
     // trails
     const u = this.trailMat.uniforms;
     (u.uCenter.value as THREE.Vector3).set(p.x, 0, p.z);
@@ -261,7 +262,7 @@ class Orbit extends Weapon {
     u.uArc.value = Math.min(((Math.PI * 2) / Math.max(1, n)) * 0.8, 0.22 * spd);
     u.uAlpha.value = this.appear * (this.evolved ? 1 : 0.85);
     this.trailGeo.instanceCount = count;
-    this.angleAttr.needsUpdate = true;
+    uploadItems(this.angleAttr, count);
     if (this.lastHit.size > 2000) this.lastHit.clear();
   }
 

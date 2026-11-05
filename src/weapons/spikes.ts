@@ -7,6 +7,7 @@ import { VFX, col, SPARK_EMBER, DECAL_SCORCH, DECAL_GLOW, DECAL_CRACK } from "./
 import { weaponToonRamp } from "./vfx/toon";
 import { levelLines, easeOutBack, liveSlot } from "./util";
 import { evolvedFrame, glow, INK } from "./iconkit";
+import { uploadInstances } from "../core/gpu";
 
 /**
  * หนามเงามรณะ (Shadow Thorns) — dark violet thorns burst out of the ground in
@@ -304,8 +305,7 @@ class Spikes extends Weapon {
     }
     mesh.count = count;
     mesh.visible = count > 0;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    uploadInstances(mesh);
     if (this.hitVol.size > 4000) this.hitVol.clear();
   }
 
