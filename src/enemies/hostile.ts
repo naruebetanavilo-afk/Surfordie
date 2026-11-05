@@ -17,7 +17,7 @@ export const ORB_GREEN = "sfdOrbG";
 export const ORB_RED = "sfdOrbR";
 
 /** max simultaneous lobbed globs (protects against 60 spitters = bullet hell) */
-const MAX_GOO = 14;
+const MAX_GOO = 10;
 let gooInFlight = 0;
 
 /** core + flipped, enlarged dark shell = cheap single-draw toon outline */

@@ -92,16 +92,21 @@ function shove(em: EnemyManager, self: number, x: number, z: number, r: number, 
   });
 }
 
+const SUMMON_CAP = 700;
+
 /** spawn minions around (cx,cz) in a ring, with a puff for each */
 function summon(id: string, count: number, cx: number, cz: number, radius: number, color: string, elite = false): void {
   const em = G.enemies;
   const hpMul = G.director.hpScale(G.time);
+  const dmgMul = G.director.dmgScale(G.time);
   const off = G.rng.angle();
   for (let k = 0; k < count; k++) {
+    // summons may exceed the director's cap a little, but never run away
+    if (em.alive >= SUMMON_CAP) break;
     const a = off + (k / count) * Math.PI * 2;
     const x = cx + Math.cos(a) * radius;
     const z = cz + Math.sin(a) * radius;
-    if (em.spawn(id, x, z, { hpMul, elite }) >= 0) {
+    if (em.spawn(id, x, z, { hpMul, dmgMul, elite }) >= 0) {
       G.fx.flash(x, z, { radius: 1.1, color, life: 0.35 });
       G.fx.particles.burst(x, 0.3, z, { count: 5, color, speed: 2.5, life: 0.4, size: 0.3, up: 2.5, gravity: -6 });
     }
@@ -133,6 +138,17 @@ function startCharge(em: EnemyManager, i: number, m: BossMemo, wind: number, wid
   m.len = Math.min(17, Math.max(9, distToPlayer(em, i) + 5));
   setMark(m, Marks.lane(em.x[i], em.z[i], m.angle, m.len, width, wind, em.uid[i]));
   G.audio.sfx("warn");
+}
+
+const dozer = { em: null as EnemyManager | null, self: 0, sx: 0, sz: 0 };
+function bulldoze(j: number): void {
+  const em = dozer.em!;
+  const i = dozer.self;
+  if (j === i || em.isBoss(j)) return;
+  const ox = em.x[j] - em.x[i];
+  const oz = em.z[j] - em.z[i];
+  const side = ox * dozer.sz - oz * dozer.sx >= 0 ? 1 : -1;
+  em.knock(j, dozer.sz * side + dozer.sx * 0.5, -dozer.sx * side + dozer.sz * 0.5, 22);
 }
 
 /** charge wind-up + dash shared by the bull and the king. returns true while busy */
@@ -182,14 +198,12 @@ function chargeStates(em: EnemyManager, i: number, dt: number, m: BossMemo, spee
         G.world.shake(0.5);
       }
     }
-    // bulldoze the crowd sideways
-    em.queryCircle(em.x[i], em.z[i], em.radius[i] + 0.4, (j) => {
-      if (j === i || em.isBoss(j)) return;
-      const ox = em.x[j] - em.x[i];
-      const oz = em.z[j] - em.z[i];
-      const side = ox * sz - oz * sx >= 0 ? 1 : -1;
-      em.knock(j, sz * side + sx * 0.5, -sx * side + sz * 0.5, 22);
-    });
+    // bulldoze the crowd sideways (module-level callback: no per-frame closure)
+    dozer.em = em;
+    dozer.self = i;
+    dozer.sx = sx;
+    dozer.sz = sz;
+    em.queryCircle(em.x[i], em.z[i], em.radius[i] + 0.4, bulldoze);
     m.fx -= dt;
     if (m.fx <= 0) {
       m.fx = 0.05;

@@ -3,7 +3,7 @@ import { ENEMY_DEFS, enemyDefIndex } from "../enemies/defs";
 import { Marks } from "../enemies/marks";
 import { resetHostile, warmUpHostile } from "../enemies/hostile";
 import { resetBosses, setBossesPassive } from "../enemies/bosses";
-import { startStampede } from "../enemies/ai";
+import { startStampede, MODE_STAMPEDE } from "../enemies/ai";
 import { PHASES, EVENTS, type Phase, type RunEvent } from "./timeline";
 
 /** length of a full run in seconds; surviving this long = victory */
@@ -52,6 +52,7 @@ export class Director {
   private quiet = false;
   /** debug lineup members: uid, offset x, offset z (kept around the player) */
   private lineup: number[] = [];
+  private relocateT = 0;
 
   constructor() {
     this.cache = PHASES.map((phase) => {
@@ -168,6 +169,39 @@ export class Director {
     this.runPending(t);
     this.stream(t, dt);
     this.elites(t);
+    this.relocateT -= dt;
+    if (this.relocateT <= 0) {
+      this.relocateT = 0.3;
+      this.relocate();
+    }
+  }
+
+  /**
+   * Keep the pressure on a player who keeps running: enemies left far behind
+   * are moved back to the screen border (biased towards the run direction)
+   * instead of trailing off-screen for ages.
+   */
+  private relocate(): void {
+    const em = G.enemies;
+    const w = G.world;
+    const cx = w.camTarget.x;
+    const cz = w.camTarget.z;
+    // a generous box around the visible area (the view is much taller than wide)
+    const maxX = w.viewHalfW * 2.2 + 2;
+    const maxUp = w.viewHalfH * 1.5 + 2;
+    const maxDown = w.viewHalfH * 1.2 + 2;
+    let budget = 40;
+    for (let i = 0; i < em.n && budget > 0; i++) {
+      if (em.state[i] !== 0 || em.isBoss(i) || em.ai0[i] === MODE_STAMPEDE) continue;
+      const dx = em.x[i] - cx;
+      const dz = em.z[i] - cz;
+      if (dx < maxX && dx > -maxX && dz > -maxUp && dz < maxDown) continue;
+      em.spawnPoint(this.tmp, 1.2 + G.rng.next() * 1.5);
+      em.x[i] = this.tmp.x;
+      em.z[i] = this.tmp.z;
+      em.kx[i] = em.kz[i] = 0;
+      budget--;
+    }
   }
 
   // ---------------------------------------------------------------- stream --
