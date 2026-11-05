@@ -16,14 +16,14 @@ import { evolvedFrame, glow, INK } from "./iconkit";
  * enemies in place.
  */
 const LV = [
-  { lines: 4, dmg: 14, range: 3.2, cd: 2.2, slow: 0.6 },
-  { lines: 5, dmg: 14, range: 3.2, cd: 2.2, slow: 0.6 },
-  { lines: 5, dmg: 19, range: 3.6, cd: 2.1, slow: 0.55 },
-  { lines: 6, dmg: 19, range: 3.6, cd: 2.0, slow: 0.55 },
-  { lines: 7, dmg: 25, range: 4.0, cd: 1.9, slow: 0.5 },
-  { lines: 7, dmg: 25, range: 4.4, cd: 1.8, slow: 0.5 },
-  { lines: 8, dmg: 36, range: 4.8, cd: 1.7, slow: 0.45 },
-  { lines: 9, dmg: 48, range: 5.2, cd: 1.6, slow: 0.4 },
+  { lines: 5, dmg: 14, range: 3.6, cd: 2.2, slow: 0.6 },
+  { lines: 6, dmg: 14, range: 3.6, cd: 2.2, slow: 0.6 },
+  { lines: 6, dmg: 19, range: 4.0, cd: 2.1, slow: 0.55 },
+  { lines: 7, dmg: 19, range: 4.0, cd: 2.0, slow: 0.55 },
+  { lines: 8, dmg: 25, range: 4.4, cd: 1.9, slow: 0.5 },
+  { lines: 8, dmg: 25, range: 4.8, cd: 1.8, slow: 0.5 },
+  { lines: 9, dmg: 36, range: 5.2, cd: 1.7, slow: 0.45 },
+  { lines: 10, dmg: 48, range: 5.6, cd: 1.6, slow: 0.4 },
 ];
 
 const MAX_SPIKES = 720;
@@ -189,8 +189,11 @@ class Spikes extends Weapon {
     const sz = Math.sqrt(G.player.stats.area) * (this.evolved ? 1.3 : 1);
     const spacing = 0.78 * sz;
     const per = Math.max(2, Math.ceil((range - 0.9) / spacing) + 1);
-    // rotate the pattern every volley (golden angle) so gaps get covered
-    const a0 = this.volley * 2.39996;
+    // aim the first line at the nearest enemy; otherwise rotate the pattern
+    // every volley (golden angle) so gaps get covered
+    let a0 = this.volley * 2.39996;
+    const t = G.enemies.nearest(p.x, p.z, Math.min(12, range + 2));
+    if (t >= 0) a0 = Math.atan2(G.enemies.z[t] - p.z, G.enemies.x[t] - p.x);
     for (let i = 0; i < lines; i++) {
       const base = a0 + (i / lines) * Math.PI * 2;
       for (let j = 0; j < per; j++) {
@@ -247,7 +250,7 @@ class Spikes extends Weapon {
         this.curVol = this.vol[k];
         this.curDmg = this.volleyDmg;
         this.curRoot = this.evolved && this.ring[k] === 1;
-        G.enemies.queryCircle(x, z, 0.5 * s, this.hitCb);
+        G.enemies.queryCircle(x, z, 0.62 * s, this.hitCb);
         if ((k & 1) === 0) VFX.dark.spawn(x, z, 0.6 * s, 1.1, shadow, DECAL_SCORCH, 0.55, 0, 0.5, 0.15);
         if ((k & 3) === 0) VFX.decals.spawn(x, z, 0.75 * s, 0.3, violet, DECAL_GLOW, 0.8, 0, 0.6, 0.2);
         sp.spawn(x, 0.3, z, (Math.random() - 0.5) * 1.5, 2.5 + Math.random() * 2, (Math.random() - 0.5) * 1.5, 0.45, 0.4 * s, Math.random() < 0.6 ? violet : tip, SPARK_EMBER, -3, 1);
@@ -371,11 +374,11 @@ export const spikesDef: WeaponDef = {
     [
       "หนามเงาพุ่งขึ้นจากพื้นเป็นแนวรัศมีรอบตัว แทงศัตรูและทำให้ช้าลง",
       "แนวหนาม +1",
-      "ดาเมจ +36% • ระยะ +13% • ช้าลงมากขึ้น",
+      "ดาเมจ +36% • ระยะ +11% • ช้าลงมากขึ้น",
       "แนวหนาม +1 • ปะทุถี่ขึ้น",
       "แนวหนาม +1 • ดาเมจ +32% • ระยะเพิ่ม",
-      "ระยะ +10% • ปะทุถี่ขึ้น",
-      "แนวหนาม +1 • ดาเมจ +44%",
+      "ระยะ +9% • ปะทุถี่ขึ้น",
+      "แนวหนาม +1 • ดาเมจ +44% • ระยะเพิ่ม",
       "แนวหนาม +1 • ดาเมจ +33% • ระยะเพิ่ม",
     ][l - 1] ?? "",
   lines: (l) =>

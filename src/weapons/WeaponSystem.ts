@@ -315,8 +315,6 @@ export class WeaponSystem {
         rewards.push(c);
         continue;
       }
-      // a lone evolution is the jackpot: don't dilute it with small upgrades
-      if (rewards.length && rewards[0].kind === "evolve") break;
       const opts: Choice[] = [];
       const weights: number[] = [];
       for (const w of this.weapons) {
