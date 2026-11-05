@@ -2,12 +2,21 @@ import * as THREE from "three";
 import { G } from "../core/G";
 import { damp } from "../core/math";
 import { Decor } from "./Decor";
+import { createGround, GROUND_FOG_COLOR } from "./Ground";
+import { createVignette } from "./Vignette";
 
 export type Quality = "low" | "medium" | "high";
 
+/** visible half-width (world units) across the narrow axis in portrait */
+const FRAME_HALF_W = 5.6;
+/** visible half-height (camera plane units) in landscape / desktop */
+const FRAME_HALF_V = 7.4;
+/** tallest thing we expect to walk in from the bottom edge (bosses) */
+const SPAWN_HEIGHT = 2.4;
+
 /**
  * Owns renderer, scene, camera, lights and the infinite ground.
- * Camera looks down at roughly 55 degrees; screen-up is world -Z.
+ * Camera looks down at roughly 54 degrees; screen-up is world -Z.
  */
 export class World {
   renderer: THREE.WebGLRenderer;
@@ -17,6 +26,7 @@ export class World {
   decor: Decor;
   sun: THREE.DirectionalLight;
   hemi: THREE.HemisphereLight;
+  private vignette: THREE.Mesh;
 
   /** CSS pixel size of the viewport */
   width = 1;
@@ -26,24 +36,46 @@ export class World {
 
   /** distance from camera to the follow target */
   camDist = 30;
-  readonly camPitch = (56 * Math.PI) / 180;
+  readonly camPitch = (54 * Math.PI) / 180;
+  private readonly cosPitch = Math.cos(this.camPitch);
   camTarget = new THREE.Vector3();
   private shakeAmt = 0;
   private shakeT = 0;
   /** extra zoom factor (1 = default), e.g. boss fights zoom out a bit */
   zoom = 1;
   private zoomCur = 1;
+  /** automatic subtle zoom-out when the screen is crowded (multiplies `zoom`) */
+  private crowdZoom = 1;
 
   /** combined projection*view matrix, refreshed every frame (for fast 2D projection) */
   readonly viewProj = new THREE.Matrix4();
-  /** half extents of the visible ground area around the target (world units) */
+  /**
+   * Conservative half extents of the visible ground area around the target
+   * (world units). The visible ground is a trapezoid (wider at the top of the
+   * screen); `viewHalfW` is its widest half-width, `viewHalfH` its far (-Z)
+   * extent, and `viewHalfH * 0.75` always covers the near (+Z) extent
+   * including tall enemies. A point outside this rectangle is never visible.
+   */
   viewHalfW = 10;
   viewHalfH = 16;
+  /** exact trapezoid parameters (see onScreen) */
+  private tanH = 0.2;
+  private farExt = 16;
+  private nearExt = 10;
 
-  readonly groundUniforms = { uTime: { value: 0 } };
+  readonly groundUniforms = {
+    uTime: { value: 0 },
+    uCenter: { value: new THREE.Vector2() },
+    uView: { value: new THREE.Vector2(6, 16) },
+  };
 
   constructor(canvas: HTMLCanvasElement) {
-    const saved = (localStorage.getItem("sfd.quality") as Quality | null) ?? null;
+    let saved: Quality | null = null;
+    try {
+      saved = (localStorage.getItem("sfd.quality") as Quality | null) ?? null;
+    } catch {
+      saved = null;
+    }
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     this.quality = saved ?? (isMobile ? "medium" : "high");
 
@@ -56,23 +88,27 @@ export class World {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
 
-    const bg = new THREE.Color("#1f3324");
+    const bg = new THREE.Color(GROUND_FOG_COLOR);
     this.scene.background = bg;
     this.scene.fog = new THREE.Fog(bg, 40, 80);
 
-    this.camera = new THREE.PerspectiveCamera(42, 1, 1, 300);
+    this.camera = new THREE.PerspectiveCamera(40, 1, 1, 300);
 
-    this.hemi = new THREE.HemisphereLight("#e8f4ff", "#40602c", 1.6);
+    // cool sky fill + warm grass bounce, warm key light from the upper left
+    this.hemi = new THREE.HemisphereLight("#cfe6ff", "#7a9a52", 1.5);
     this.scene.add(this.hemi);
-    this.sun = new THREE.DirectionalLight("#fff6e0", 1.9);
+    this.sun = new THREE.DirectionalLight("#fff0d2", 2.25);
     this.sun.position.set(-6, 14, 8);
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
 
-    this.ground = this.createGround();
+    this.ground = createGround(this.groundUniforms);
     this.scene.add(this.ground);
 
     this.decor = new Decor(this.scene);
+
+    this.vignette = createVignette();
+    this.scene.add(this.vignette);
 
     this.resize();
     window.addEventListener("resize", () => this.resize());
@@ -81,7 +117,11 @@ export class World {
 
   setQuality(q: Quality): void {
     this.quality = q;
-    localStorage.setItem("sfd.quality", q);
+    try {
+      localStorage.setItem("sfd.quality", q);
+    } catch {
+      /* storage blocked: keep in memory only */
+    }
     this.resize();
   }
 
@@ -99,23 +139,45 @@ export class World {
     G.overlay?.resize(w, h, Math.min(window.devicePixelRatio || 1, 2));
   }
 
-  /** choose a camera distance so that ~15 world units fit across the narrow axis */
+  /**
+   * Choose a camera distance so that ~11 world units fit across a portrait
+   * phone (characters read big), or ~15 units vertically in landscape, then
+   * derive the exact visible ground trapezoid.
+   */
   private fitCamera(): void {
     const fov = (this.camera.fov * Math.PI) / 180;
-    const tanV = Math.tan(fov / 2);
+    const phi = fov / 2;
+    const tanV = Math.tan(phi);
     const tanH = tanV * this.camera.aspect;
-    const halfW = 6.0;
-    const halfH = 8.0;
-    this.camDist = Math.max(halfW / tanH, halfH / tanV) * this.zoomCur;
-    this.camera.near = Math.max(1, this.camDist * 0.3);
-    this.camera.far = this.camDist * 4;
+    const zoom = this.zoomCur * this.crowdZoom;
+    const D = Math.max(FRAME_HALF_W / tanH, FRAME_HALF_V / tanV) * zoom;
+    this.camDist = D;
+    this.camera.near = Math.max(0.5, D * 0.3);
+    this.camera.far = D * 4;
     this.camera.updateProjectionMatrix();
+
+    const th = this.camPitch;
+    const sin = Math.sin(th);
+    const cos = Math.cos(th);
+    // ground hit of the top / bottom screen rays (relative to the target, +Z = screen-down)
+    const far = D * (sin / Math.tan(th - phi) - cos);
+    const nearGround = th + phi < Math.PI / 2 - 1e-3 ? D * (cos - sin / Math.tan(th + phi)) : D * cos;
+    // a point SPAWN_HEIGHT above the ground just below the bottom edge
+    const nearTall =
+      th + phi < Math.PI / 2 - 1e-3 ? D * cos - (D * sin - SPAWN_HEIGHT) / Math.tan(th + phi) : D * cos + 2;
+    // half-width grows linearly with depth (= D - dz*cos), widest at the far edge
+    const halfFar = (D + far * cos) * tanH;
+    this.tanH = tanH;
+    this.farExt = far;
+    this.nearExt = nearGround;
+    this.viewHalfW = halfFar * 1.02;
+    this.viewHalfH = Math.max(far * 1.02, nearTall / 0.75);
+
     const fog = this.scene.fog as THREE.Fog;
-    fog.near = this.camDist * 1.05;
-    fog.far = this.camDist * 2.1;
-    this.viewHalfW = (this.camDist * tanH) * 1.05;
-    // ground depth visible is stretched by the tilt
-    this.viewHalfH = (this.camDist * tanV) / Math.sin(this.camPitch) * 1.15;
+    // view-space depth: target = D, far edge ~1.37 D -> the top strip fades into haze
+    fog.near = D * 1.08;
+    fog.far = D * 2.15;
+    this.groundUniforms.uView.value.set(this.viewHalfW, far);
   }
 
   shake(amount: number): void {
@@ -126,9 +188,15 @@ export class World {
   update(dt: number, tx: number, tz: number): void {
     const realDt = dt;
     this.groundUniforms.uTime.value = G.realTime;
+
+    // crowded screen -> ease the camera back a little (max +9%)
+    const alive = G.state === "playing" && G.enemies ? G.enemies.alive : 0;
+    const crowdTarget = 1 + Math.min(0.09, Math.max(0, alive - 180) / 3600);
     const zc = this.zoomCur;
+    const cc = this.crowdZoom;
     this.zoomCur += (this.zoom - this.zoomCur) * damp(2, realDt);
-    if (Math.abs(zc - this.zoomCur) > 1e-4) this.fitCamera();
+    this.crowdZoom += (crowdTarget - this.crowdZoom) * damp(0.6, realDt);
+    if (Math.abs(zc - this.zoomCur) > 1e-4 || Math.abs(cc - this.crowdZoom) > 1e-4) this.fitCamera();
 
     this.camTarget.x += (tx - this.camTarget.x) * damp(10, realDt);
     this.camTarget.z += (tz - this.camTarget.z) * damp(10, realDt);
@@ -153,6 +221,7 @@ export class World {
 
     // keep the ground & sun centred on the camera target
     this.ground.position.set(Math.round(this.camTarget.x / 4) * 4, 0, Math.round(this.camTarget.z / 4) * 4);
+    this.groundUniforms.uCenter.value.set(this.camTarget.x, this.camTarget.z);
     this.sun.position.set(this.camTarget.x - 6, 14, this.camTarget.z + 8);
     this.sun.target.position.set(this.camTarget.x, 0, this.camTarget.z);
     this.decor.update(this.camTarget.x, this.camTarget.z, this.viewHalfW, this.viewHalfH);
@@ -175,65 +244,14 @@ export class World {
     return nx > -1.2 && nx < 1.2 && ny > -1.2 && ny < 1.2;
   }
 
-  /** is world point (x,z) inside the visible area (with margin in world units)? */
+  /**
+   * Is ground point (x,z) inside the visible area (margin in world units,
+   * negative = must be that far inside)? Exact perspective trapezoid test.
+   */
   onScreen(x: number, z: number, margin = 0): boolean {
-    const dx = Math.abs(x - this.camTarget.x);
     const dz = z - this.camTarget.z;
-    return dx < this.viewHalfW + margin && dz > -this.viewHalfH - margin && dz < this.viewHalfH * 0.75 + margin;
-  }
-
-  private createGround(): THREE.Mesh {
-    const geo = new THREE.PlaneGeometry(260, 260, 1, 1);
-    geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshLambertMaterial({ color: "#ffffff" });
-    const uniforms = this.groundUniforms;
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = uniforms.uTime;
-      shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nvarying vec3 vWPos;")
-        .replace(
-          "#include <worldpos_vertex>",
-          "#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;",
-        );
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          "#include <common>",
-          `#include <common>
-varying vec3 vWPos;
-uniform float uTime;
-float gHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float gNoise(vec2 p){
-  vec2 i = floor(p); vec2 f = fract(p);
-  vec2 u = f*f*(3.0-2.0*f);
-  return mix(mix(gHash(i), gHash(i+vec2(1,0)), u.x), mix(gHash(i+vec2(0,1)), gHash(i+vec2(1,1)), u.x), u.y);
-}`,
-        )
-        .replace(
-          "#include <color_fragment>",
-          `#include <color_fragment>
-{
-  vec2 p = vWPos.xz;
-  float tile = 3.2;
-  vec2 c = floor(p / tile);
-  float checker = mod(c.x + c.y, 2.0);
-  vec3 g1 = vec3(0.36, 0.62, 0.25);
-  vec3 g2 = vec3(0.31, 0.55, 0.22);
-  vec3 col = mix(g1, g2, checker);
-  float n = gNoise(p * 0.18) * 0.6 + gNoise(p * 0.7) * 0.4;
-  col *= 0.86 + n * 0.22;
-  // dirt patches
-  float d = smoothstep(0.62, 0.75, gNoise(p * 0.05 + 13.0));
-  col = mix(col, vec3(0.42, 0.36, 0.24), d * 0.55);
-  // soft tile edge lines
-  vec2 f = abs(fract(p / tile) - 0.5);
-  float edge = smoothstep(0.47, 0.5, max(f.x, f.y));
-  col *= 1.0 - edge * 0.06;
-  diffuseColor.rgb = col;
-}`,
-        );
-    };
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.renderOrder = -10;
-    return mesh;
+    if (dz < -this.farExt - margin || dz > this.nearExt + margin) return false;
+    const halfW = (this.camDist - dz * this.cosPitch) * this.tanH;
+    return Math.abs(x - this.camTarget.x) < halfW + margin;
   }
 }
