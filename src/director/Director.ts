@@ -298,7 +298,7 @@ export class Director {
     this.bossAlive++;
     this.setBossMood(true);
     G.audio.sfx("bossRoar");
-    G.world.shake(0.6);
+    G.fx.shake(0.6);
     G.events.emit("bossSpawned", { typeId: def.id, name: def.name });
   }
 

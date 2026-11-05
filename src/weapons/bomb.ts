@@ -290,7 +290,7 @@ class Bomb extends Weapon {
     sp.burst(x, 0.4, z, 12 + r * 4, r * 3.4, 2.5, 0.6, 0.6, main, SPARK_GLOW, -3, 2.6, r * 0.5);
     sp.burst(x, 0.2, z, 4 + r, r * 0.9, 3, 0.8, 0.3, col(ev ? EV_ACC : VIOLET), SPARK_EMBER, 1.2, 1.6, r);
     if (this.shakeCd <= 0) {
-      G.world.shake(Math.min(0.4, 0.16 + r * 0.03) * power);
+      G.fx.shake(Math.min(0.4, 0.16 + r * 0.03) * power);
       this.shakeCd = 0.22;
     }
     if (this.boomCd <= 0) {

@@ -154,7 +154,7 @@ class Lightning extends Weapon {
     }
     if (this.thunderCd <= 0) {
       G.audio.sfx("thunder", { vol: 0.7, pitch: 0.9 + Math.random() * 0.25 });
-      G.world.shake(ev ? 0.22 : 0.12);
+      G.fx.shake(ev ? 0.22 : 0.12);
       this.thunderCd = 0.14;
     }
     if (jumps > 0) {

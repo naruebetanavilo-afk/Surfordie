@@ -319,7 +319,7 @@ class Aura extends Weapon {
     VFX.sparkles.burst(p.x, 0.6, p.z, 10, R * 2.5, 3, 0.55, 0.9, col("#ffffff"), SPARK_STAR, -5, 2, R);
     VFX.sparkles.burst(p.x, 0.4, p.z, 18, R * 3, 2, 0.6, 0.5, col("#ffc21f"), SPARK_GLOW, -2, 2.5, R * 0.8);
     G.player.heal(G.player.stats.maxHp * 0.02);
-    G.world.shake(0.2);
+    G.fx.shake(0.2);
     G.audio.sfx("burn", { vol: 0.8, pitch: 0.7 });
   }
 
