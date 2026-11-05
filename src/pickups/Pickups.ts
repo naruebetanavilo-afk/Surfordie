@@ -390,7 +390,7 @@ export class Pickups {
         break;
       case "nuke": {
         G.fx.ring(p.x, p.z, { radius: 14, color: "#ffb347", life: 0.7, width: 2 });
-        G.world.shake(0.8);
+        G.fx.shake(0.8);
         const em = G.enemies;
         for (let e = 0; e < em.n; e++) {
           if (em.state[e] === 0 && !em.isBoss(e) && G.world.onScreen(em.x[e], em.z[e], 1)) em.kill(e, "nuke");

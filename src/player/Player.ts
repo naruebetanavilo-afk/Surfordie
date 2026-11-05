@@ -256,7 +256,7 @@ export class Player {
     this.hurtFlash = 1;
     G.overlay.playerHit(dmg);
     G.audio.sfx("hurt");
-    G.world.shake(0.35);
+    G.fx.shake(0.35);
     G.events.emit("playerHurt", { amount: dmg });
     if (this.hp <= 0) {
       if (this.stats.revives > 0) {
