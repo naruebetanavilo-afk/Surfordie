@@ -71,8 +71,8 @@ float gNoise(vec2 p){
   float nL = gNoise(p * 0.06 + 3.1);   // big hue drift
   float nM = gNoise(p * 0.5 + 7.7);    // clumps
   float nS = gNoise(p * 2.7);          // fine grain
-  vec3 lightCol = mix(${lin("#74bf55")}, ${lin("#80c452")}, nL);
-  vec3 darkCol  = mix(${lin("#4d9a41")}, ${lin("#43934a")}, nL);
+  vec3 lightCol = mix(${lin("#70c24f")}, ${lin("#7fca4b")}, nL);
+  vec3 darkCol  = mix(${lin("#489f3d")}, ${lin("#3e9846")}, nL);
   vec3 col = mix(darkCol, lightCol, ch);
   col *= 0.9 + nM * 0.16 + (nS - 0.5) * 0.1;
 
@@ -88,7 +88,7 @@ float gNoise(vec2 p){
   vec2 q = (p - uCenter) / uView;
   q.y *= q.y > 0.0 ? 1.6 : 0.95;      // near side (+z) is shorter on screen
   float dist = length(q);
-  col *= mix(1.0, 0.68, smoothstep(0.32, 1.05, dist));
+  col *= mix(1.0, 0.74, smoothstep(0.36, 1.08, dist));
 
   diffuseColor.rgb = col * uLightComp;
 }`,

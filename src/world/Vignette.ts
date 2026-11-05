@@ -11,7 +11,7 @@ export function createVignette(): THREE.Mesh {
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uColor: { value: new THREE.Color("#04120c") },
-      uStrength: { value: 0.62 },
+      uStrength: { value: 0.56 },
     },
     vertexShader: /* glsl */ `
       varying vec2 vQ;
