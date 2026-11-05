@@ -46,6 +46,10 @@ export class World {
   private zoomCur = 1;
   /** automatic subtle zoom-out when the screen is crowded (multiplies `zoom`) */
   private crowdZoom = 1;
+  /** 1 on the main menu: closer "hero showcase" framing with the hero high on screen */
+  private menuBlend = 0;
+  /** ground offset (+Z) from the follow target to the point the camera looks at */
+  private lookOffZ = 0;
 
   /** combined projection*view matrix, refreshed every frame (for fast 2D projection) */
   readonly viewProj = new THREE.Matrix4();
@@ -149,7 +153,7 @@ export class World {
     const phi = fov / 2;
     const tanV = Math.tan(phi);
     const tanH = tanV * this.camera.aspect;
-    const zoom = this.zoomCur * this.crowdZoom;
+    const zoom = this.zoomCur * this.crowdZoom * (1 - 0.42 * this.menuBlend);
     const D = Math.max(FRAME_HALF_W / tanH, FRAME_HALF_V / tanV) * zoom;
     this.camDist = D;
     this.camera.near = Math.max(0.5, D * 0.3);
@@ -173,6 +177,10 @@ export class World {
     this.viewHalfW = halfFar * 1.02;
     this.viewHalfH = Math.max(far * 1.02, nearTall / 0.75);
 
+    // menu showcase: look below the hero so it sits ~27% from the top of the screen
+    const beta = Math.atan(0.46 * tanV);
+    this.lookOffZ = this.menuBlend * D * (sin / Math.tan(th - beta) - cos);
+
     const fog = this.scene.fog as THREE.Fog;
     // view-space depth: target = D, far edge ~1.37 D -> the top strip fades into haze
     fog.near = D * 1.08;
@@ -194,9 +202,18 @@ export class World {
     const crowdTarget = 1 + Math.min(0.09, Math.max(0, alive - 180) / 3600);
     const zc = this.zoomCur;
     const cc = this.crowdZoom;
+    const mc = this.menuBlend;
     this.zoomCur += (this.zoom - this.zoomCur) * damp(2, realDt);
     this.crowdZoom += (crowdTarget - this.crowdZoom) * damp(0.6, realDt);
-    if (Math.abs(zc - this.zoomCur) > 1e-4 || Math.abs(cc - this.crowdZoom) > 1e-4) this.fitCamera();
+    const menuTarget = G.state === "menu" ? 1 : 0;
+    this.menuBlend += (menuTarget - this.menuBlend) * damp(menuTarget ? 3 : 5, realDt);
+    if (Math.abs(this.menuBlend - menuTarget) < 1e-3) this.menuBlend = menuTarget;
+    if (
+      Math.abs(zc - this.zoomCur) > 1e-4 ||
+      Math.abs(cc - this.crowdZoom) > 1e-4 ||
+      Math.abs(mc - this.menuBlend) > 1e-5
+    )
+      this.fitCamera();
 
     this.camTarget.x += (tx - this.camTarget.x) * damp(10, realDt);
     this.camTarget.z += (tz - this.camTarget.z) * damp(10, realDt);
@@ -209,7 +226,7 @@ export class World {
     const sz = (Math.cos(this.shakeT * 2.3) + Math.sin(this.shakeT * 4.7) * 0.5) * s;
 
     const cx = this.camTarget.x + sx;
-    const cz = this.camTarget.z + sz;
+    const cz = this.camTarget.z + sz + this.lookOffZ;
     this.camera.position.set(
       cx,
       Math.sin(this.camPitch) * this.camDist,
@@ -224,7 +241,7 @@ export class World {
     this.groundUniforms.uCenter.value.set(this.camTarget.x, this.camTarget.z);
     this.sun.position.set(this.camTarget.x - 6, 14, this.camTarget.z + 8);
     this.sun.target.position.set(this.camTarget.x, 0, this.camTarget.z);
-    this.decor.update(this.camTarget.x, this.camTarget.z, this.viewHalfW, this.viewHalfH);
+    this.decor.update(this.camTarget.x, this.camTarget.z + this.lookOffZ, this.viewHalfW, this.viewHalfH);
   }
 
   render(): void {
@@ -249,7 +266,7 @@ export class World {
    * negative = must be that far inside)? Exact perspective trapezoid test.
    */
   onScreen(x: number, z: number, margin = 0): boolean {
-    const dz = z - this.camTarget.z;
+    const dz = z - this.camTarget.z - this.lookOffZ;
     if (dz < -this.farExt - margin || dz > this.nearExt + margin) return false;
     const halfW = (this.camDist - dz * this.cosPitch) * this.tanH;
     return Math.abs(x - this.camTarget.x) < halfW + margin;

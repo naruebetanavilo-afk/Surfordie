@@ -68,7 +68,7 @@ float gNoise(vec2 p){
   float nM = gNoise(p * 0.5 + 7.7);    // clumps
   float nS = gNoise(p * 2.7);          // fine grain
   vec3 lightCol = mix(${lin("#74bf55")}, ${lin("#80c452")}, nL);
-  vec3 darkCol  = mix(${lin("#55a046")}, ${lin("#4a9a4c")}, nL);
+  vec3 darkCol  = mix(${lin("#4d9a41")}, ${lin("#43934a")}, nL);
   vec3 col = mix(darkCol, lightCol, ch);
   col *= 0.9 + nM * 0.16 + (nS - 0.5) * 0.1;
 
