@@ -19,6 +19,7 @@ const cache = new Map<string, string>();
  */
 let scratch: HTMLCanvasElement | null = null;
 let scratchCtx: CanvasRenderingContext2D | null = null;
+let drawing = false;
 
 export function iconURL(key: string, draw: IconDraw, size = 96): string {
   const k = `${key}@${size}`;
@@ -28,14 +29,21 @@ export function iconURL(key: string, draw: IconDraw, size = 96): string {
     scratch = document.createElement("canvas");
     scratchCtx = scratch.getContext("2d", { willReadFrequently: true })!;
   }
-  const cv = scratch;
+  // a draw that itself asks for another icon gets its own canvas
+  const nested = drawing;
+  const cv = nested ? document.createElement("canvas") : scratch;
   // assigning width/height clears the bitmap and resets all context state
   cv.width = size;
   cv.height = size;
-  const c = scratchCtx;
+  const c = nested ? cv.getContext("2d", { willReadFrequently: true })! : scratchCtx;
   c.lineJoin = "round";
   c.lineCap = "round";
-  draw(c, size);
+  drawing = true;
+  try {
+    draw(c, size);
+  } finally {
+    drawing = nested;
+  }
   const url = cv.toDataURL("image/png");
   cache.set(k, url);
   return url;

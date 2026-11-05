@@ -215,6 +215,15 @@ export class Hud {
    * several canvases in the frame they open.
    */
   private static prewarm(): void {
+    // icons may draw text: wait for the web font so the cache never keeps a
+    // fallback-font version
+    const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+    if (fonts && fonts.status !== "loaded") {
+      fonts.ready.then(() => Hud.prewarmNow()).catch(() => Hud.prewarmNow());
+    } else Hud.prewarmNow();
+  }
+
+  private static prewarmNow(): void {
     for (const w of WEAPONS) {
       prewarmIcon("w:" + w.id, w.icon);
       if (w.evolution) prewarmIcon("e:" + w.id, w.evolution.icon ?? w.icon);
