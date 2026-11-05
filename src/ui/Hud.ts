@@ -40,6 +40,21 @@ interface SlotView {
   evolved: boolean;
 }
 
+/** one boss HP bar in the stacked boss panel */
+interface BossView {
+  root: HTMLDivElement;
+  name: HTMLSpanElement;
+  fill: HTMLDivElement;
+  trail: HTMLDivElement;
+  pct: HTMLSpanElement;
+  /** tracked enemy uid (-1 = bar unused) and its last known slot */
+  uid: number;
+  slot: number;
+  frac: number;
+  pctV: number;
+  label: string;
+}
+
 interface ToastItem {
   el: HTMLDivElement;
   /** seconds alive (only advances while playing) */
@@ -54,6 +69,8 @@ const PASSIVE_SLOTS = 6;
 const TOAST_LIFE = 2.9;
 const MINI_LIFE = 3.6;
 const MAX_MINIS = 2;
+/** bosses shown at once (a weak build can face two or three overlapping bosses) */
+const MAX_BOSS_BARS = 3;
 
 /**
  * In-game DOM HUD: portrait + level + XP bar (top-left), gold, timer, kills,
@@ -82,12 +99,9 @@ export class Hud {
   private wSlots: SlotView[] = [];
   private pSlots: SlotView[] = [];
   private toastsEl: HTMLDivElement;
-  private boss: HTMLDivElement;
-  private bossName: HTMLSpanElement;
-  private bossCount: HTMLSpanElement;
-  private bossFill: HTMLDivElement;
-  private bossTrail: HTMLDivElement;
-  private bossPct: HTMLSpanElement;
+  private bossBox: HTMLDivElement;
+  private bossViews: BossView[] = [];
+  private bossMore: HTMLDivElement;
   private announceEl: HTMLDivElement;
   private announceText: HTMLDivElement;
   private hint: HTMLDivElement;
@@ -103,11 +117,10 @@ export class Hud {
   private toasts: ToastItem[] = [];
   private toastGap = 0;
 
-  // boss tracking (enemy uid, -1 = none)
-  private bossUid = -1;
-  private bossSlot = -1;
+  // boss tracking: periodic scan collects the newest bosses (by uid)
   private bossScanT = 0;
-  private bossFrac = -1;
+  private readonly bossUids = new Int32Array(MAX_BOSS_BARS);
+  private readonly bossSlots = new Int32Array(MAX_BOSS_BARS);
 
   // first-run hint
   private hintOn = false;
@@ -165,17 +178,10 @@ export class Hud {
     for (let i = 0; i < WEAPON_SLOTS; i++) this.wSlots.push(this.makeSlot(this.weaponRow));
     for (let i = 0; i < PASSIVE_SLOTS; i++) this.pSlots.push(this.makeSlot(this.passiveRow));
 
-    // ---------------------------------------------------------- boss bar
-    this.boss = el("div", "hud-boss hidden", this.root);
-    const bh = el("div", "hud-boss-head", this.boss);
-    img("hud-boss-skull", bh, uiIcon("bossSkull", 64));
-    this.bossName = el("span", "hud-boss-name", bh);
-    this.bossCount = el("span", "hud-boss-count", bh);
-    const bb = el("div", "hud-boss-bar", this.boss);
-    this.bossTrail = el("div", "hud-boss-trail", bb);
-    this.bossFill = el("div", "hud-boss-fill", bb);
-    el("div", "hud-boss-ticks", bb);
-    this.bossPct = el("span", "hud-boss-pct", bb);
+    // ---------------------------------------------------------- boss bars
+    this.bossBox = el("div", "hud-bosses", this.root);
+    for (let k = 0; k < MAX_BOSS_BARS; k++) this.bossViews.push(this.makeBossView(k));
+    this.bossMore = el("div", "hud-boss-more hidden", this.bossBox);
 
     // ---------------------------------------------------------- toasts, banner, hint
     this.toastsEl = el("div", "hud-toasts", this.root);
@@ -196,6 +202,9 @@ export class Hud {
       this.announce(`${e.name} ปรากฏตัว!`, "#ff4f6a", "boss");
       this.bossScanT = 0;
     });
+    G.events.on("bossKilled", () => {
+      this.bossScanT = 0;
+    });
     G.events.on("levelUp", () => this.flashLevel());
     Hud.prewarm();
   }
@@ -214,6 +223,19 @@ export class Hud {
     prewarmUi("chest", 192);
     prewarmUi("chestOpen", 192);
     prewarmUi("bossSkull", 64);
+  }
+
+  private makeBossView(k: number): BossView {
+    const root = el("div", "hud-boss hidden" + (k > 0 ? " sub" : ""), this.bossBox);
+    const bh = el("div", "hud-boss-head", root);
+    img("hud-boss-skull", bh, uiIcon("bossSkull", 64));
+    const name = el("span", "hud-boss-name", bh);
+    const bb = el("div", "hud-boss-bar", root);
+    const trail = el("div", "hud-boss-trail", bb);
+    const fill = el("div", "hud-boss-fill", bb);
+    el("div", "hud-boss-ticks", bb);
+    const pct = el("span", "hud-boss-pct", bb);
+    return { root, name, fill, trail, pct, uid: -1, slot: -1, frac: -1, pctV: -1, label: "" };
   }
 
   private makeSlot(parent: HTMLElement): SlotView {
@@ -239,10 +261,8 @@ export class Hud {
     this.portrait.src = iconURL("hero:" + h.id, h.portrait, 128);
     this.portraitBox.style.setProperty("--accent", h.color);
     this.name.textContent = h.name;
-    this.boss.classList.add("hidden");
-    this.bossUid = -1;
-    this.bossSlot = -1;
-    this.bossFrac = -1;
+    for (const v of this.bossViews) this.bindBoss(v, -1, -1);
+    this.bossMore.classList.add("hidden");
     this.bossScanT = 0;
     this.announceEl.classList.remove("show", "boss");
     this.lastRT = G.realTime;
@@ -375,52 +395,113 @@ export class Hud {
 
   private updateBoss(dt: number): void {
     const em = G.enemies;
-    // validate the tracked boss (slots move when enemies are removed)
-    if (this.bossUid >= 0) {
-      const i = this.bossSlot;
-      if (!(i >= 0 && i < em.n && em.uid[i] === this.bossUid && em.state[i] === 0)) {
-        this.bossSlot = em.findByUid(this.bossUid);
-        if (this.bossSlot < 0) this.bossUid = -1;
-      }
-    }
     this.bossScanT -= dt;
-    let count = this.bossUid >= 0 ? 1 : 0;
     if (this.bossScanT <= 0) {
-      // periodic full scan: finds new bosses and counts them
+      // periodic full scan (cheap: 2x/s): keep the newest bosses, newest on top
       this.bossScanT = 0.5;
-      count = 0;
+      const uids = this.bossUids;
+      const slots = this.bossSlots;
+      uids.fill(-1);
+      let total = 0;
       for (let i = 0; i < em.n; i++) {
         if (em.state[i] !== 0 || !em.isBoss(i)) continue;
-        if (count === 0 && this.bossUid < 0) {
-          this.bossUid = em.uid[i];
-          this.bossSlot = i;
+        total++;
+        // insertion into a tiny sorted (desc by uid) array
+        const u = em.uid[i];
+        let k = MAX_BOSS_BARS - 1;
+        if (u <= uids[k]) continue;
+        while (k > 0 && u > uids[k - 1]) {
+          uids[k] = uids[k - 1];
+          slots[k] = slots[k - 1];
+          k--;
         }
-        count++;
+        uids[k] = u;
+        slots[k] = i;
       }
-      if (this.changed("bossN", count)) this.bossCount.textContent = count > 1 ? `×${count}` : "";
+      let shown = 0;
+      for (let k = 0; k < MAX_BOSS_BARS; k++) {
+        this.bindBoss(this.bossViews[k], uids[k], slots[k]);
+        if (uids[k] >= 0) shown++;
+      }
+      // lets CSS push the announcement banner below the stack
+      if (this.changed("bossShown", shown)) this.root.dataset.bosses = String(shown);
+      const extra = total - MAX_BOSS_BARS;
+      if (this.changed("bossMore", extra)) {
+        this.bossMore.classList.toggle("hidden", extra <= 0);
+        this.bossMore.textContent = extra > 0 ? `+${extra} บอส` : "";
+      }
     }
-    const bi = this.bossUid >= 0 ? this.bossSlot : -1;
-    if (bi < 0) {
-      if (this.changed("boss", "")) {
-        this.boss.classList.add("hidden");
-        this.bossFrac = -1;
-      }
+    for (let k = 0; k < MAX_BOSS_BARS; k++) this.updateBossView(this.bossViews[k]);
+  }
+
+  /** attach a bar to a boss uid (or detach with uid -1) */
+  private bindBoss(v: BossView, uid: number, slot: number): void {
+    if (v.uid === uid) {
+      v.slot = slot;
       return;
     }
-    const name = em.def(bi).name;
-    if (this.changed("boss", name)) {
-      this.boss.classList.remove("hidden");
-      this.bossName.textContent = name;
-      this.bossFrac = -1;
+    const wasOn = v.uid >= 0;
+    v.uid = uid;
+    v.slot = slot;
+    v.frac = -1;
+    v.pctV = -1;
+    if (uid < 0) {
+      v.root.classList.add("hidden");
+      v.label = "";
+      return;
     }
-    const f = Math.max(0, Math.min(1, em.hp[bi] / em.maxHp[bi]));
-    if (Math.abs(f - this.bossFrac) > 0.001) {
-      this.bossFrac = f;
+    const name = G.enemies.def(slot).name;
+    if (v.label !== name) {
+      v.label = name;
+      v.name.textContent = name;
+    }
+    // a new boss replacing a bar re-plays the entrance; the trail snaps to full
+    v.trail.style.transition = "none";
+    v.trail.style.transform = "scaleX(1)";
+    v.fill.style.transform = "scaleX(1)";
+    v.root.classList.remove("dead");
+    requestAnimationFrame(() => {
+      v.trail.style.transition = "";
+    });
+    if (!wasOn) v.root.classList.remove("hidden");
+    else {
+      v.root.classList.add("hidden");
+      // re-show next frame so the entrance animation restarts without a reflow
+      requestAnimationFrame(() => v.uid >= 0 && v.root.classList.remove("hidden"));
+    }
+  }
+
+  private updateBossView(v: BossView): void {
+    if (v.uid < 0) return;
+    const em = G.enemies;
+    let i = v.slot;
+    // slots move when enemies are compacted: re-find by uid when stale
+    if (!(i >= 0 && i < em.n && em.uid[i] === v.uid && em.state[i] === 0)) {
+      i = v.slot = em.findByUid(v.uid);
+      if (i < 0) {
+        // died: show it empty until the next scan removes the bar
+        if (v.frac !== 0) {
+          v.frac = 0;
+          v.fill.style.transform = "scaleX(0)";
+          v.trail.style.transform = "scaleX(0)";
+          v.pct.textContent = "0%";
+          v.root.classList.add("dead");
+        }
+        this.bossScanT = Math.min(this.bossScanT, 0.35);
+        return;
+      }
+    }
+    const f = Math.max(0, Math.min(1, em.hp[i] / em.maxHp[i]));
+    if (Math.abs(f - v.frac) > 0.001) {
+      v.frac = f;
       const sx = `scaleX(${f.toFixed(4)})`;
-      this.bossFill.style.transform = sx;
-      this.bossTrail.style.transform = sx;
+      v.fill.style.transform = sx;
+      v.trail.style.transform = sx;
       const pct = Math.ceil(f * 100);
-      if (this.changed("bossPct", pct)) this.bossPct.textContent = `${pct}%`;
+      if (pct !== v.pctV) {
+        v.pctV = pct;
+        v.pct.textContent = `${pct}%`;
+      }
     }
   }
 

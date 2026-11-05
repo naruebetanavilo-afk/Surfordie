@@ -420,7 +420,13 @@ export class Screens {
       return b;
     };
 
-    const slider = (parent: HTMLElement, get: () => number, set: (v: number) => void, commit: () => void) => {
+    const slider = (
+      parent: HTMLElement,
+      get: () => number,
+      set: (v: number) => void,
+      commit: () => void,
+      fmt: (v: number) => string = (v) => `${Math.round(v * 100)}%`,
+    ) => {
       const wrap = el("div", "slider", parent);
       wrap.tabIndex = 0;
       wrap.setAttribute("role", "slider");
@@ -432,7 +438,7 @@ export class Screens {
         const v = get();
         fill.style.transform = `scaleX(${v})`;
         knob.style.left = `${v * 100}%`;
-        val.textContent = `${Math.round(v * 100)}%`;
+        val.textContent = fmt(v);
         wrap.setAttribute("aria-valuenow", String(Math.round(v * 100)));
       };
       const fromX = (x: number) => {
@@ -529,8 +535,28 @@ export class Screens {
     });
     segBtns.forEach((x) => x.classList.toggle("on", x.dataset.q === G.world.quality));
 
+    // screen shake 0..150% (slider 0..1 maps to 0..1.5); read by Fx.shake()
+    const SHAKE_MAX = 1.5;
+    slider(
+      row("จอสั่น", "shake"),
+      () => Math.max(0, Math.min(1, G.fx.shakeScale / SHAKE_MAX)),
+      (v) => {
+        G.fx.shakeScale = Math.round(v * SHAKE_MAX * 100) / 100;
+      },
+      () => {
+        try {
+          localStorage.setItem("sfd.shake", String(G.fx.shakeScale));
+        } catch {
+          /* storage unavailable */
+        }
+        // preview the new strength (world shake ticks even while paused/menu)
+        G.fx.shake(0.35);
+      },
+      (v) => (v <= 0 ? "ปิด" : `${Math.round(v * SHAKE_MAX * 100)}%`),
+    );
+
     sw(
-      row("แสดง FPS", "hourglass"),
+      row("แสดง FPS", "gauge"),
       () => G.debug.showFps,
       (v) => {
         G.debug.showFps = v;

@@ -245,7 +245,9 @@ export type UiIconName =
   | "home"
   | "retry"
   | "back"
-  | "gem";
+  | "gem"
+  | "shake"
+  | "gauge";
 
 const UI: Record<UiIconName, IconDraw> = {
   coin(c, s) {
@@ -454,6 +456,62 @@ const UI: Record<UiIconName, IconDraw> = {
   },
   chestOpen(c, s) {
     drawChest(c, s, true);
+  },
+  shake(c, s) {
+    // tilted phone with motion marks either side
+    c.save();
+    c.translate(s * 0.5, s * 0.5);
+    c.rotate(-0.22);
+    c.beginPath();
+    c.roundRect(-s * 0.17, -s * 0.3, s * 0.34, s * 0.6, s * 0.07);
+    fs(c, s, vgrad(c, -s * 0.3, s * 0.3, "#8fe9ff", "#2a8fd6"), 0.065);
+    c.beginPath();
+    c.roundRect(-s * 0.11, -s * 0.22, s * 0.22, s * 0.36, s * 0.03);
+    c.fillStyle = "rgba(22,13,36,0.55)";
+    c.fill();
+    c.beginPath();
+    c.arc(0, s * 0.21, s * 0.03, 0, Math.PI * 2);
+    c.fillStyle = UI_INK;
+    c.fill();
+    c.restore();
+    c.lineWidth = s * 0.06;
+    c.strokeStyle = "#ffffff";
+    for (const side of [-1, 1]) {
+      for (let k = 0; k < 2; k++) {
+        const x = s * 0.5 + side * s * (0.3 + k * 0.11);
+        c.beginPath();
+        c.moveTo(x, s * (0.36 + k * 0.04));
+        c.lineTo(x + side * s * 0.03, s * 0.5);
+        c.lineTo(x, s * (0.64 - k * 0.04));
+        c.stroke();
+      }
+    }
+  },
+  gauge(c, s) {
+    // speedometer: arc dial with a needle
+    c.beginPath();
+    c.arc(s * 0.5, s * 0.6, s * 0.36, Math.PI, 0);
+    c.lineTo(s * 0.86, s * 0.66);
+    c.lineTo(s * 0.14, s * 0.66);
+    c.closePath();
+    fs(c, s, vgrad(c, s * 0.24, s * 0.66, "#c9ffb0", "#3fb83a"), 0.065);
+    c.lineWidth = s * 0.04;
+    c.strokeStyle = UI_INK;
+    for (let k = 0; k <= 4; k++) {
+      const a = Math.PI + (k / 4) * Math.PI;
+      c.beginPath();
+      c.moveTo(s * 0.5 + Math.cos(a) * s * 0.3, s * 0.6 + Math.sin(a) * s * 0.3);
+      c.lineTo(s * 0.5 + Math.cos(a) * s * 0.22, s * 0.6 + Math.sin(a) * s * 0.22);
+      c.stroke();
+    }
+    c.lineWidth = s * 0.07;
+    c.beginPath();
+    c.moveTo(s * 0.5, s * 0.6);
+    c.lineTo(s * 0.68, s * 0.36);
+    c.stroke();
+    c.beginPath();
+    c.arc(s * 0.5, s * 0.6, s * 0.07, 0, Math.PI * 2);
+    fs(c, s, "#ffd23f", 0.04);
   },
   speaker(c, s) {
     c.beginPath();
