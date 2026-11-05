@@ -3,6 +3,8 @@ import { G } from "../core/G";
 import { hitEnemy } from "../combat/damage";
 import { Weapon, type WeaponDef } from "./types";
 import { iconBg } from "../ui/icons";
+import { VFX, col, SPARK_STAR } from "./vfx";
+import { evolvedFrame, glow } from "./iconkit";
 
 /**
  * ดาบพิฆาต (Slayer Blade) — reference weapon implementation.
@@ -78,11 +80,16 @@ class Slash extends Weapon {
       const l = Math.hypot(ex, ez) || 1;
       if ((ex * dx + ez * dz) / l >= cos || l < 0.9) hits.push(i);
     });
+    let stars = 0;
     for (const i of hits) {
       const x = G.enemies.x[i];
       const z = G.enemies.z[i];
       hitEnemy(i, dmg, this.def.id, { kb: 9, fromX: p.x, fromZ: p.z });
       G.fx.hitSpark(x, 0.8, z, color);
+      if (stars < 4 && Math.random() < 0.4) {
+        stars++;
+        VFX.sparkles.spawn(x, 0.9, z, dx * 1.5, 1, dz * 1.5, 0.28, 0.75, col("#ffffff"), SPARK_STAR, 0, 1, 4);
+      }
     }
     if (this.evolved) {
       // crescent wave projectile
@@ -122,34 +129,47 @@ function ensureWaveKind(): void {
   G.projectiles.registerKind("slashWave", { geometry: geo, material: mat, faceVelocity: true, capacity: 64 });
 }
 
+function drawSword(c: CanvasRenderingContext2D, s: number, evolved: boolean): void {
+  iconBg(c, s, evolved ? "#ff4f6a" : "#5ad1ff", evolved ? "#24101a" : "#1b1f2a");
+  // crescent swing
+  c.save();
+  c.lineCap = "round";
+  c.strokeStyle = evolved ? "rgba(255,107,129,0.85)" : "rgba(191,233,255,0.8)";
+  c.lineWidth = s * 0.06;
+  c.beginPath();
+  c.arc(s * 0.5, s * 0.52, s * 0.34, Math.PI * 0.95, Math.PI * 1.65);
+  c.stroke();
+  c.restore();
+  if (evolved) glow(c, s * 0.5, s * 0.5, s * 0.34, "rgba(255,79,106,0.55)");
+  c.save();
+  c.translate(s / 2, s / 2);
+  c.rotate(-Math.PI / 4);
+  c.fillStyle = evolved ? "#ffd0d8" : "#e9f3ff";
+  c.strokeStyle = "#0d0f14";
+  c.lineWidth = s * 0.04;
+  c.beginPath();
+  c.moveTo(0, -s * 0.36);
+  c.lineTo(s * 0.07, -s * 0.26);
+  c.lineTo(s * 0.07, s * 0.12);
+  c.lineTo(-s * 0.07, s * 0.12);
+  c.lineTo(-s * 0.07, -s * 0.26);
+  c.closePath();
+  c.fill();
+  c.stroke();
+  c.fillStyle = evolved ? "#ff4f6a" : "#d9a440";
+  c.fillRect(-s * 0.17, s * 0.12, s * 0.34, s * 0.06);
+  c.fillStyle = "#6b4a2b";
+  c.fillRect(-s * 0.04, s * 0.18, s * 0.08, s * 0.16);
+  c.restore();
+  if (evolved) evolvedFrame(c, s);
+}
+
 export const slashDef: WeaponDef = {
   id: "slash",
   name: "ดาบพิฆาต",
   maxLevel: 8,
   color: "#bfe9ff",
-  icon: (c, s) => {
-    iconBg(c, s, "#5ad1ff");
-    c.save();
-    c.translate(s / 2, s / 2);
-    c.rotate(-Math.PI / 4);
-    c.fillStyle = "#e9f3ff";
-    c.strokeStyle = "#0d0f14";
-    c.lineWidth = s * 0.04;
-    c.beginPath();
-    c.moveTo(0, -s * 0.36);
-    c.lineTo(s * 0.07, -s * 0.26);
-    c.lineTo(s * 0.07, s * 0.12);
-    c.lineTo(-s * 0.07, s * 0.12);
-    c.lineTo(-s * 0.07, -s * 0.26);
-    c.closePath();
-    c.fill();
-    c.stroke();
-    c.fillStyle = "#d9a440";
-    c.fillRect(-s * 0.17, s * 0.12, s * 0.34, s * 0.06);
-    c.fillStyle = "#6b4a2b";
-    c.fillRect(-s * 0.04, s * 0.18, s * 0.08, s * 0.16);
-    c.restore();
-  },
+  icon: (c, s) => drawSword(c, s, false),
   describe: (l) =>
     [
       "ฟันเป็นวงโค้งใส่ศัตรูที่ใกล้ที่สุด",
@@ -176,6 +196,7 @@ export const slashDef: WeaponDef = {
     requires: "might",
     name: "ดาบจันทราโลหิต",
     describe: "ฟันกว้างขึ้นและปล่อยคลื่นพระจันทร์เสี้ยวทะลุศัตรู",
+    icon: (c, s) => drawSword(c, s, true),
   },
   create: () => new Slash(slashDef),
 };

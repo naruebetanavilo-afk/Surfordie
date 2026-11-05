@@ -4,6 +4,7 @@ import { vfxClock } from "./clock";
 import { Sparkles } from "./Sparkles";
 import { Decals } from "./Decals";
 import { Domes } from "./Domes";
+import { Bolts } from "./Bolts";
 
 export { vfxClock } from "./clock";
 export { SPARK_GLOW, SPARK_STAR, SPARK_EMBER, SPARK_STEADY } from "./Sparkles";
@@ -19,6 +20,8 @@ class WeaponVfx {
   private _decals: Decals | null = null;
   private _dark: Decals | null = null;
   private _domes: Domes | null = null;
+  private _bolts: Bolts | null = null;
+  private dt = 0;
 
   /** additive billboards: glows, star sparkles, embers */
   get sparkles(): Sparkles {
@@ -44,8 +47,15 @@ class WeaponVfx {
     return this._domes;
   }
 
+  /** camera-facing lightning ribbons */
+  get bolts(): Bolts {
+    if (!this._bolts) this._bolts = new Bolts(G.world.scene, 128);
+    return this._bolts;
+  }
+
   begin(dt: number): void {
     vfxClock.t += dt;
+    this.dt = dt;
   }
 
   flush(): void {
@@ -53,6 +63,7 @@ class WeaponVfx {
     this._decals?.update();
     this._dark?.update();
     this._domes?.update();
+    this._bolts?.update(this.dt);
   }
 
   /** drop every live effect (new run / back to menu) */
@@ -61,6 +72,7 @@ class WeaponVfx {
     this._decals?.clear();
     this._dark?.clear();
     this._domes?.clear();
+    this._bolts?.clear();
   }
 }
 
