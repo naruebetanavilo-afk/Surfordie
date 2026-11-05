@@ -2,6 +2,7 @@ import { G } from "../core/G";
 import { Meta } from "../core/Meta";
 import { formatTime, formatNum } from "../core/math";
 import { iconURL, uiIcon, prewarmIcon, prewarmUi } from "./icons";
+import { onTap } from "./tap";
 import { weaponById, WEAPONS } from "../weapons/registry";
 import { passiveById, PASSIVES } from "../upgrades/passives";
 import { RUN_LENGTH } from "../director/Director";
@@ -66,9 +67,12 @@ interface ToastItem {
 
 const WEAPON_SLOTS = 6;
 const PASSIVE_SLOTS = 6;
-const TOAST_LIFE = 2.9;
-const MINI_LIFE = 3.6;
+/** skill toasts sit over the playfield: keep them brief (seconds of play time) */
+const TOAST_LIFE = 1.8;
+const MINI_LIFE = 2.4;
 const MAX_MINIS = 2;
+/** stat lines shown in a big toast (the level-up card already listed them all) */
+const TOAST_LINES = 2;
 /** bosses shown at once (a weak build can face two or three overlapping bosses) */
 const MAX_BOSS_BARS = 3;
 
@@ -166,10 +170,12 @@ export class Hud {
     img("chip-icon", kb, uiIcon("skull", 64));
     this.kills = el("span", "chip-val", kb, "0");
     const pause = el("button", "hud-pause interactive", sub);
+    pause.type = "button";
     pause.setAttribute("aria-label", "หยุดชั่วคราว");
     el("span", "", pause);
     el("span", "", pause);
-    pause.addEventListener("click", () => G.screens.togglePause());
+    // onTap: works as a second finger while the joystick thumb is held
+    onTap(pause, () => G.screens.togglePause());
 
     // ---------------------------------------------------------- slots
     const slots = el("div", "hud-slots", this.root);
@@ -570,7 +576,7 @@ export class Hud {
     const body = el("div", "toast-body", root);
     el("div", "toast-name", body, c.name);
     const lines = c.lines.length ? c.lines : [c.desc];
-    for (let i = 0; i < Math.min(3, lines.length); i++) {
+    for (let i = 0; i < Math.min(TOAST_LINES, lines.length); i++) {
       const [lbl, val] = splitStatLine(lines[i]);
       const d = el("div", `toast-line l${i}`, body);
       el("span", "lbl", d, lbl);
