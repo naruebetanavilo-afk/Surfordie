@@ -1,7 +1,7 @@
 import { G } from "../core/G";
 import { ENEMY_DEFS, enemyDefIndex } from "../enemies/defs";
 import { Marks } from "../enemies/marks";
-import { ensureHostileKinds, resetHostile } from "../enemies/hostile";
+import { resetHostile, warmUpHostile } from "../enemies/hostile";
 import { resetBosses, setBossesPassive } from "../enemies/bosses";
 import { startStampede } from "../enemies/ai";
 import { PHASES, EVENTS, type Phase, type RunEvent } from "./timeline";
@@ -83,7 +83,8 @@ export class Director {
     Marks.clear();
     resetHostile();
     resetBosses();
-    ensureHostileKinds();
+    warmUpHostile();
+    Marks.warmUp(G.player.x, G.player.z);
     this.debugSpawns();
   }
 

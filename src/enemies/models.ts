@@ -367,12 +367,15 @@ export function buildBullBoss(): THREE.BufferGeometry {
 export function buildWitchBoss(): THREE.BufferGeometry {
   const b = new PartBuilder();
   const skin = "#9fd35a";
-  const robe = "#3f8a52";
+  const robe = "#4fa864";
   // robe skirt hides the legs (tiny feet still shuffle)
   for (const [s, part] of [[-1, PART.LEG_L], [1, PART.LEG_R]] as const) {
     b.box(0.16, 0.12, 0.3, "#1e2a1e", part, { pos: [s * 0.15, 0.06, 0.06], pivot: [s * 0.15, 0.4, 0] });
   }
   b.cone(0.7, 1.15, robe, PART.BODY, { pos: [0, 0.58, 0] }, 12);
+  // glowing toxic hem + purple sash
+  b.cyl(0.66, 0.72, 0.1, "#9dff4a", PART.BODY, { pos: [0, 0.07, 0] }, 12);
+  b.cyl(0.4, 0.44, 0.08, "#6233a0", PART.BODY, { pos: [0, 0.92, 0] }, 12);
   b.cyl(0.36, 0.42, 0.42, "#56a565", PART.BODY, { pos: [0, 1.15, -0.02] }, 10);
   // ragged moss strands
   for (let k = 0; k < 8; k++) {

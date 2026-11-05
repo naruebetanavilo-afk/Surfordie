@@ -211,6 +211,30 @@ export function orbRing(kind: string, x: number, z: number, count: number, offse
   }
 }
 
+/**
+ * Spawn one invisible, harmless projectile of each kind (below the ground) so
+ * their shaders compile at run start instead of on the first enemy shot.
+ */
+export function warmUpHostile(): void {
+  ensureHostileKinds();
+  for (const kind of [GOO, ORB_GREEN, ORB_RED]) {
+    spec.kind = kind;
+    spec.x = G.player.x;
+    spec.z = G.player.z;
+    spec.y = -20;
+    spec.vx = spec.vz = 0;
+    spec.damage = 0;
+    spec.radius = -G.player.radius;
+    spec.life = 0.1;
+    spec.scale = 1;
+    spec.update = undefined;
+    spec.onExpire = undefined;
+    spec.onHit = undefined;
+    spec.data = undefined;
+    G.projectiles.spawn(spec);
+  }
+}
+
 /** new run: forget in-flight counters (Projectiles.clear() drops them silently) */
 export function resetHostile(): void {
   gooInFlight = 0;

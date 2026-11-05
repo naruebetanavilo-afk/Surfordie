@@ -77,8 +77,8 @@ void main() {
     vec2 d = vec2(min(vUv.x, 1.0 - vUv.x) * uSize.x, min(along, 1.0 - along) * uSize.y);
     float edge = 1.0 - smoothstep(0.1, 0.2, min(d.x, d.y));
     float fill = 1.0 - smoothstep(uProgress - 0.01, uProgress, along);
-    // chevrons scrolling towards the far end
-    float chev = fract((along * uSize.y - abs(vUv.x - 0.5) * uSize.x * 0.9) * 0.55 - uTime * 2.5);
+    // chevrons (tips towards the far end) scrolling in the travel direction
+    float chev = fract((along * uSize.y + abs(vUv.x - 0.5) * uSize.x * 0.9) * 0.55 - uTime * 2.5);
     float stripe = smoothstep(0.0, 0.08, chev) * (1.0 - smoothstep(0.4, 0.48, chev));
     float blink = 0.75 + 0.25 * sin(uTime * (10.0 + uProgress * 22.0));
     a = max(0.2 + stripe * 0.18, fill * (0.5 + stripe * 0.25));
@@ -331,6 +331,11 @@ class MarkSystem {
 
   clear(): void {
     for (const m of this.pool) this.release(m);
+  }
+
+  /** show one invisible mark for a frame so the shader compiles up front */
+  warmUp(x: number, z: number): void {
+    this.circle(x, z, 0.01, 0.05);
   }
 
   /** free GPU resources (the pool is rebuilt lazily if used again) */

@@ -333,8 +333,8 @@ export function witchUpdate(em: EnemyManager, i: number, dt: number): boolean {
       const dx = p.x - em.x[i];
       const dz = p.z - em.z[i];
       const d = Math.hypot(dx, dz) || 1;
-      if (d > 6.5) steerTo(em, i, dt, p.x, p.z, 1, 5);
-      else if (d < 3.8) {
+      if (d > 5.5) steerTo(em, i, dt, p.x, p.z, 1, 5);
+      else if (d < 3.4) {
         steerTo(em, i, dt, em.x[i] - dx, em.z[i] - dz, 0.8, 5);
         facePlayer(em, i, dt, 6);
       } else {
