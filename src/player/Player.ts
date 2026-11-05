@@ -1,10 +1,52 @@
 import * as THREE from "three";
 import { G } from "../core/G";
 import { Meta } from "../core/Meta";
-import { damp } from "../core/math";
+import { clamp, damp, easeOutCubic, lerp } from "../core/math";
 import { baseStats, xpToNext, type PlayerStats } from "./stats";
 import { heroById, type HeroDef } from "./heroes";
-import { blobShadowTexture } from "../fx/textures";
+
+/** ground decal: soft contact shadow + thin accent ring (ring is white, tinted by material colour) */
+let groundTex: THREE.Texture | null = null;
+function heroGroundTexture(): THREE.Texture {
+  if (groundTex) return groundTex;
+  const s = 128;
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = s;
+  const c = cv.getContext("2d")!;
+  const h = s / 2;
+  const g = c.createRadialGradient(h, h, 0, h, h, h * 0.62);
+  g.addColorStop(0, "rgba(0,0,0,0.62)");
+  g.addColorStop(0.6, "rgba(0,0,0,0.42)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  c.fillStyle = g;
+  c.fillRect(0, 0, s, s);
+  c.strokeStyle = "rgba(255,255,255,0.55)";
+  c.lineWidth = s * 0.03;
+  c.beginPath();
+  c.arc(h, h, h * 0.86, 0, Math.PI * 2);
+  c.stroke();
+  c.strokeStyle = "rgba(255,255,255,0.18)";
+  c.lineWidth = s * 0.08;
+  c.stroke();
+  groundTex = new THREE.CanvasTexture(cv);
+  groundTex.colorSpace = THREE.SRGBColorSpace;
+  return groundTex;
+}
+
+/** bones the animator drives (any may be missing on a custom model) */
+interface Rig {
+  body?: THREE.Object3D;
+  head?: THREE.Object3D;
+  armL?: THREE.Object3D;
+  armR?: THREE.Object3D;
+  legL?: THREE.Object3D;
+  legR?: THREE.Object3D;
+  weapon?: THREE.Object3D;
+  cape?: THREE.Object3D;
+  capeTip?: THREE.Object3D;
+  hatTip?: THREE.Object3D;
+  orbGlow?: THREE.Object3D;
+}
 
 export class Player {
   x = 0;
@@ -39,21 +81,45 @@ export class Player {
   readonly root = new THREE.Group();
   private model: THREE.Group | null = null;
   private parts: Record<string, THREE.Object3D | undefined> = {};
+  private rig: Rig = {};
   private flashMats: THREE.MeshToonMaterial[] = [];
   private shadow: THREE.Mesh;
+  private shadowMat: THREE.MeshBasicMaterial;
+
+  // --- animation state (visual only) ---
+  private moveBlend = 0;
+  private yawVel = 0;
+  private capeA = 0;
+  private capeV = 0;
+  private capeTipA = 0;
+  private capeTipV = 0;
+  private hatA = 0;
+  private hatV = 0;
+  private hatZ = 0;
+  private hatZV = 0;
+  /** knight-style swing progress driven by the slash weapon (1 = idle) */
+  private swingP = 1;
+  /** auto-detected cast/throw progress (1 = idle) */
+  private attackP = 1;
+  private lastWeaponTimer = 0;
+  /** squash/stretch impulse spring (hurt, level up, landing) */
+  private pop = 0;
+  private popV = 0;
+  private hopT = 1;
+  private lastHurt = 0;
+  private eventsHooked = false;
 
   constructor(scene: THREE.Scene) {
     scene.add(this.root);
-    const sm = new THREE.MeshBasicMaterial({
-      map: blobShadowTexture(),
+    this.shadowMat = new THREE.MeshBasicMaterial({
+      map: heroGroundTexture(),
       transparent: true,
       depthWrite: false,
-      color: "#000000",
-      opacity: 0.45,
+      color: "#ffffff",
     });
-    const sg = new THREE.PlaneGeometry(1.4, 1.4);
+    const sg = new THREE.PlaneGeometry(1.5, 1.5);
     sg.rotateX(-Math.PI / 2);
-    this.shadow = new THREE.Mesh(sg, sm);
+    this.shadow = new THREE.Mesh(sg, this.shadowMat);
     this.shadow.position.y = 0.025;
     this.shadow.renderOrder = -4;
     scene.add(this.shadow);
@@ -78,10 +144,26 @@ export class Player {
     this.setModel(this.hero.build());
     this.recalcStats();
     this.hp = this.stats.maxHp;
+    this.hookEvents();
+  }
+
+  private hookEvents(): void {
+    if (this.eventsHooked || !G.events) return;
+    this.eventsHooked = true;
+    G.events.on("levelUp", () => {
+      this.hopT = 0;
+      this.kick(0.35);
+    });
+    G.events.on("runStart", () => {
+      this.hopT = 0;
+    });
   }
 
   private setModel(m: THREE.Group): void {
-    if (this.model) this.root.remove(this.model);
+    if (this.model) {
+      this.root.remove(this.model);
+      disposeModel(this.model);
+    }
     this.model = m;
     this.root.add(m);
     this.parts = {};
@@ -98,6 +180,30 @@ export class Player {
         }
       }
     });
+    const p = this.parts;
+    this.rig = {
+      body: p.body,
+      head: p.head,
+      armL: p.armL,
+      armR: p.armR,
+      legL: p.legL,
+      legR: p.legR,
+      weapon: p.weapon,
+      cape: p.cape,
+      capeTip: p.capeTip,
+      hatTip: p.hatTip,
+      orbGlow: p.orbGlow,
+    };
+    for (const o of Object.values(this.rig)) {
+      if (o && !o.userData.base) o.userData.base = o.position.clone();
+    }
+    this.shadowMat.color.set(this.hero.color);
+    this.swingP = 1;
+    this.attackP = 1;
+    this.capeA = this.capeV = this.capeTipA = this.capeTipV = 0;
+    this.hatA = this.hatV = this.hatZ = this.hatZV = 0;
+    this.pop = this.popV = 0;
+    this.lastWeaponTimer = 0;
   }
 
   /** rebuild stats from base + hero + meta shop + passives */
@@ -198,7 +304,26 @@ export class Player {
         this.hp = Math.min(this.stats.maxHp, this.hp + h);
       }
     }
+    this.detectAttack();
     this.animate(dt, moving);
+  }
+
+  /**
+   * Visual only: the starting weapon's generic cooldown `timer` jumps up when it
+   * fires; use that to play the hero's cast / throw gesture.
+   */
+  private detectAttack(): void {
+    const style = this.hero.attackStyle;
+    if (!style || style === "swing" || !G.weapons) return;
+    const w = G.weapons.get(this.hero.startWeapon);
+    if (!w) return;
+    if (w.timer > this.lastWeaponTimer + 0.05 && this.attackP > 0.6) this.attackP = 0;
+    this.lastWeaponTimer = w.timer;
+  }
+
+  /** add a squash/stretch impulse */
+  private kick(v: number): void {
+    this.popV += v * 14;
   }
 
   /** visual update; also used on the menu screen */
@@ -206,28 +331,156 @@ export class Player {
     const targetYaw = Math.atan2(this.faceX, this.faceZ);
     let d = targetYaw - this.yaw;
     d = Math.atan2(Math.sin(d), Math.cos(d));
-    this.yaw += d * damp(16, dt);
+    const dy = d * damp(16, dt);
+    this.yaw += dy;
+    this.yawVel += ((dt > 0 ? dy / dt : 0) - this.yawVel) * damp(10, dt);
     this.root.position.set(this.x, 0, this.z);
     this.root.rotation.y = this.yaw;
+    if (this.model) this.model.position.y = this.hopT < 1 ? Math.sin(this.hopT * Math.PI) * 0.28 : 0;
+
+    const t = G.realTime;
     const speedN = Math.min(1, Math.hypot(this.velX, this.velZ) / Math.max(1, this.stats.moveSpeed));
-    this.walkT += dt * (moving ? 11 : 2.5);
-    const sw = Math.sin(this.walkT) * speedN;
-    const p = this.parts;
-    if (p.legL) p.legL.rotation.x = sw * 0.8;
-    if (p.legR) p.legR.rotation.x = -sw * 0.8;
-    if (p.armL) p.armL.rotation.x = -sw * 0.6;
-    if (p.armR && !p.armR.userData.locked) p.armR.rotation.x = sw * 0.4 - 0.3;
-    if (p.body) {
-      p.body.position.y = Math.abs(Math.sin(this.walkT)) * 0.06 * speedN + Math.sin(G.realTime * 2.4) * 0.015;
-      p.body.rotation.z = Math.sin(this.walkT * 0.5) * 0.05 * speedN;
-      p.body.rotation.x = speedN * 0.12;
+    this.moveBlend += ((moving ? 1 : 0) - this.moveBlend) * damp(10, dt);
+    const mb = Math.min(this.moveBlend, Math.max(speedN, moving ? 0.35 : 0));
+    this.walkT += dt * (moving ? 10 + 3 * speedN : 0);
+    const w = Math.sin(this.walkT);
+    const plant = 1 - Math.abs(w); // 1 when a foot hits the ground
+    const breathe = Math.sin(t * 2.6);
+    const r = this.rig;
+
+    // attack progress
+    if (this.attackP < 1) this.attackP = Math.min(1, this.attackP + dt / (this.hero.attackStyle === "cast" ? 0.38 : 0.34));
+    if (this.hopT < 1) this.hopT = Math.min(1, this.hopT + dt / 0.45);
+    const hop = this.hopT < 1 ? Math.sin(this.hopT * Math.PI) * 0.28 : 0;
+
+    // hurt reaction
+    if (this.hurtFlash > this.lastHurt + 0.5) this.kick(-0.25);
+    this.lastHurt = this.hurtFlash;
+
+    // squash spring
+    this.popV += (-this.pop * 160 - this.popV * 11) * dt;
+    this.pop += this.popV * dt;
+    const pop = clamp(this.pop, -0.35, 0.35);
+
+    // legs
+    const legAmp = 0.9 * mb;
+    if (r.legL) r.legL.rotation.x = w * legAmp;
+    if (r.legR) r.legR.rotation.x = -w * legAmp;
+
+    // body: bounce, squash on foot plant, lean forward, roll into turns
+    let twist = 0;
+    if (r.body) {
+      const base = r.body.userData.base as THREE.Vector3;
+      const bounce = Math.abs(w) * 0.075 * mb;
+      r.body.position.y = base.y + bounce + breathe * 0.008 * (1 - mb);
+      const sq = plant * 0.07 * mb - breathe * 0.012 * (1 - mb) + pop * 0.6;
+      r.body.scale.set(1 + sq * 0.6, 1 - sq, 1 + sq * 0.6);
+      r.body.rotation.x = 0.16 * speedN + (this.attackP < 1 && this.hero.attackStyle === "cast" ? Math.sin(this.attackP * Math.PI) * 0.15 : 0);
+      r.body.rotation.z = clamp(-this.yawVel * 0.05, -0.22, 0.22) + Math.sin(this.walkT) * 0.05 * mb;
+      if (this.swingP < 1) {
+        // knight: wind up to the right, follow through to the left
+        twist = 0.55 - easeOutCubic(this.swingP) * 1.0;
+      } else if (this.attackP < 1 && this.hero.attackStyle === "throw") {
+        const a = this.attackP;
+        twist = a < 0.35 ? (a / 0.35) * 0.45 : 0.45 - easeOutCubic(Math.min(1, (a - 0.35) / 0.4)) * 0.8 * (1 - Math.max(0, (a - 0.75) / 0.25));
+      }
+      r.body.rotation.y = twist;
     }
+
+    // head: look slightly up while running, idle glance around
+    if (r.head) {
+      const idleLook = (1 - mb) * Math.sin(t * 0.7) * 0.25;
+      r.head.rotation.x = -0.16 - 0.08 * speedN + Math.sin(t * 2.6 + 0.6) * 0.03 * (1 - mb) - Math.abs(w) * 0.04 * mb;
+      r.head.rotation.y = idleLook - twist * 0.4;
+      r.head.rotation.z = -(r.body?.rotation.z ?? 0) * 0.6;
+    }
+
+    // arms: counter-swing, slight outward rest angle, idle sway
+    if (r.armL) {
+      r.armL.rotation.x = -w * 0.75 * mb + Math.sin(t * 2.6) * 0.05 * (1 - mb);
+      r.armL.rotation.z = -0.14 - plant * 0.06 * mb - breathe * 0.03 * (1 - mb);
+    }
+    if (r.armR && !r.armR.userData.locked) {
+      let ax = w * 0.6 * mb - 0.12 + Math.sin(t * 2.6 + 1) * 0.05 * (1 - mb);
+      let az = 0.14 + plant * 0.06 * mb + breathe * 0.03 * (1 - mb);
+      if (this.attackP < 1) {
+        const a = this.attackP;
+        if (this.hero.attackStyle === "cast") {
+          // raise the staff forward, hold, lower
+          const k = a < 0.3 ? easeOutCubic(a / 0.3) : 1 - Math.max(0, (a - 0.55) / 0.45);
+          ax = ax * (1 - k) - 1.55 * k;
+          az = az * (1 - k) + 0.05 * k;
+        } else if (a < 0.3) {
+          // throw: pull back...
+          ax = lerp(ax, 1.25, easeOutCubic(a / 0.3));
+        } else if (a < 0.55) {
+          // ...whip forward...
+          ax = lerp(1.25, -1.9, easeOutCubic((a - 0.3) / 0.25));
+          az += 0.25;
+        } else {
+          // ...and recover
+          const u = (a - 0.55) / 0.45;
+          ax = lerp(-1.9, ax, u * u * (3 - 2 * u));
+          az += 0.25 * (1 - u);
+        }
+      }
+      r.armR.rotation.x = ax;
+      r.armR.rotation.z = az;
+    }
+    if (r.weapon) {
+      let wx = Math.sin(t * 2.2) * 0.04 * (1 - mb);
+      let sc = 1;
+      if (this.attackP < 1 && this.hero.attackStyle === "cast") wx += Math.sin(this.attackP * Math.PI) * 0.5;
+      if (this.attackP < 1 && this.hero.attackStyle === "throw") {
+        // the axe leaves the hand and a fresh one pops back in
+        const a = this.attackP;
+        sc = a < 0.5 ? 1 : a < 0.8 ? 0 : easeOutCubic((a - 0.8) / 0.2);
+      }
+      r.weapon.rotation.x = wx;
+      r.weapon.scale.setScalar(Math.max(0.001, sc));
+    }
+    if (r.orbGlow) {
+      const pulse = 0.62 + Math.sin(t * 5) * 0.05 + (this.attackP < 1 ? Math.sin(this.attackP * Math.PI) * 0.35 : 0);
+      r.orbGlow.scale.setScalar(pulse);
+    }
+
+    // cape: damped spring that streams back with speed and flaps on each step
+    const fdt = Math.min(dt, 1 / 30);
+    if (r.cape) {
+      const target = 0.06 + 0.4 * speedN + Math.abs(w) * 0.08 * mb + Math.sin(t * 1.7) * 0.04 + hop * 0.5;
+      this.capeV += ((target - this.capeA) * 90 - this.capeV * 12) * fdt;
+      this.capeA += this.capeV * fdt;
+      // keep the lift modest: from the high camera a near-horizontal cape reads as a flat board
+      r.cape.rotation.x = clamp(this.capeA, 0, 0.62);
+      r.cape.rotation.z = clamp(this.yawVel * 0.04, -0.2, 0.2);
+    }
+    if (r.capeTip) {
+      const flutter = Math.sin(t * 13 + this.walkT) * 0.16 * speedN + Math.sin(t * 2.3) * 0.05;
+      const target = (r.cape ? this.capeA * 0.3 : 0) + flutter;
+      this.capeTipV += ((target - this.capeTipA) * 70 - this.capeTipV * 9) * fdt;
+      this.capeTipA += this.capeTipV * fdt;
+      r.capeTip.rotation.x = clamp(this.capeTipA, -0.15, 0.45);
+    }
+    // floppy hat tip / pom-pom lags behind head motion
+    if (r.hatTip) {
+      const tx2 = -0.25 * speedN + (Math.abs(w) - 0.5) * 0.2 * mb + hop;
+      const tz2 = clamp(this.yawVel * 0.08, -0.4, 0.4) + Math.sin(t * 1.9) * 0.05;
+      this.hatV += ((tx2 - this.hatA) * 60 - this.hatV * 7) * fdt;
+      this.hatA += this.hatV * fdt;
+      this.hatZV += ((tz2 - this.hatZ) * 60 - this.hatZV * 7) * fdt;
+      this.hatZ += this.hatZV * fdt;
+      r.hatTip.rotation.x = this.hatA;
+      r.hatTip.rotation.z = this.hatZ;
+    }
+
     // hurt flash / invulnerability blink
     const blink = this.invuln > 0 && !this.dead ? (Math.sin(G.realTime * 30) > 0 ? 0.35 : 0) : 0;
     const f = Math.max(this.hurtFlash, blink);
     for (const m of this.flashMats) m.emissive.setRGB(f * 0.9, f * 0.15, f * 0.1);
     this.shadow.position.x = this.x;
     this.shadow.position.z = this.z;
+    const shS = 1 - hop * 0.9;
+    this.shadow.scale.set(shS, 1, shS);
   }
 
   /** play the attack swing on the weapon arm (0..1 progress) */
@@ -235,6 +488,27 @@ export class Player {
     const arm = this.parts.armR;
     if (!arm) return;
     arm.userData.locked = progress < 1;
-    if (progress < 1) arm.rotation.x = -2.2 + progress * 2.6;
+    this.swingP = progress;
+    if (progress < 1) {
+      // overhead wind-up -> fast diagonal slash -> slight overshoot
+      const e = easeOutCubic(progress);
+      arm.rotation.x = -2.5 + e * 3.0;
+      arm.rotation.z = 0.5 - e * 0.35;
+      if (progress < 0.08) this.kick(0.12);
+    }
   }
+}
+
+function disposeModel(m: THREE.Object3D): void {
+  m.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (mesh.isMesh || (o as THREE.Sprite).isSprite) {
+      if (mesh.geometry && !(o as THREE.Sprite).isSprite) mesh.geometry.dispose();
+      const mat = mesh.material as THREE.Material | THREE.Material[];
+      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+      else mat?.dispose();
+    }
+    const sk = o as THREE.SkinnedMesh;
+    if (sk.isSkinnedMesh && sk.skeleton) sk.skeleton.dispose();
+  });
 }
