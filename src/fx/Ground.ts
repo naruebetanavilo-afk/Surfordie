@@ -229,7 +229,11 @@ export class GroundLayer {
   private cursor = 0;
   activeCount = 0;
 
-  constructor(scene: THREE.Scene, readonly cap: number, additive: boolean, renderOrder: number) {
+  /**
+   * @param overlay draw on top of enemies (no depth test) so AoE / warnings stay
+   *   readable inside a dense crowd
+   */
+  constructor(scene: THREE.Scene, readonly cap: number, additive: boolean, renderOrder: number, overlay = false) {
     for (let i = 0; i < cap; i++) this.items.push(new GroundItem());
     const base = new THREE.PlaneGeometry(2, 2);
     base.rotateX(-Math.PI / 2);
@@ -252,6 +256,7 @@ export class GroundLayer {
       defines: additive ? { ADDITIVE: 1 } : {},
       transparent: true,
       depthWrite: false,
+      depthTest: !overlay,
       // glow layers use premultiplied blending (ONE, ONE_MINUS_SRC_ALPHA) so each
       // fragment can choose between additive light and occluding colour
       blending: THREE.NormalBlending,

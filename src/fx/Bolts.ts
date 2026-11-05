@@ -125,6 +125,7 @@ export class Bolts {
       fragmentShader: frag,
       transparent: true,
       depthWrite: false,
+      depthTest: false,
       blending: THREE.NormalBlending,
       premultipliedAlpha: true,
       side: THREE.DoubleSide,

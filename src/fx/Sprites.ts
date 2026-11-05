@@ -151,7 +151,7 @@ export class SpriteLayer {
   readonly mesh: THREE.Mesh;
   private mat: THREE.ShaderMaterial;
 
-  constructor(scene: THREE.Scene, cap: number, additive: boolean, renderOrder: number) {
+  constructor(scene: THREE.Scene, cap: number, additive: boolean, renderOrder: number, overlay = false) {
     this.cap = cap;
     this.px = new Float32Array(cap);
     this.py = new Float32Array(cap);
@@ -189,6 +189,7 @@ export class SpriteLayer {
       defines: additive ? { ADDITIVE: 1 } : {},
       transparent: true,
       depthWrite: false,
+      depthTest: !overlay,
       // glow layer: premultiplied blending so each shape mixes light + occlusion
       blending: THREE.NormalBlending,
       premultipliedAlpha: additive,

@@ -1,14 +1,15 @@
 /**
  * Fx — pooled, fire-and-forget visual effects + game-feel helpers.
  *
- * Everything is drawn by a handful of shared batches (no per-effect meshes):
- *   ground additive (rings, flashes, slashes, vortex, rune)  1 draw call
- *   ground decals   (goo splats, scorch, telegraphs)          1 draw call
- *   sprites additive (sparkles, glows, flares, starbursts)    1 draw call
- *   sprites normal   (smoke puffs)                            1 draw call
- *   points additive / solid (sparks / debris)                 2 draw calls
- *   lightning ribbons                                         1 draw call
- *   light pillars                                             1 draw call
+ * Everything is drawn by a handful of shared batches (no per-effect meshes);
+ * an empty batch issues no draw call:
+ *   ground glow   (rings, flashes, slashes, vortex, rune)  over the horde
+ *   ground decals (goo splats, scorch)                     under the horde
+ *   ground warn   (telegraphs)                             over the horde
+ *   sprites glow  (sparkles, glows, flares, starbursts)    over the horde
+ *   sprites smoke (puffs)                                  depth tested
+ *   points glow / solid (sparks / debris)
+ *   lightning ribbons, light pillars, thorn spikes
  * All pools have fixed caps and recycle the oldest effect when full.
  *
  * Primitives (stable API, used by weapons/enemies):
@@ -33,6 +34,7 @@
  *   glowBall(x, y, z, size, color, life = 0.25)                         camera-facing glow
  *   flare(x, y, z, size, color, life = 0.3)                             horizontal lens streak
  *   smoke(x, y, z, {count?, color?, size?, life?, spread?, rise?})
+ *   thorns(x, z, radius, {count?, tint?, height?, life?, burst?})      dark thorns erupting from the ground
  *   impact(x, y, z, dirX, dirZ, color = "#ffffff", power = 1)           directional hit spray
  *   bossDeath(x, z, color = "#ffcf5a")                                  multi-stage spectacle
  *   move(handle, x, z) / cancel(handle)                                 control a ground effect
@@ -50,6 +52,7 @@ import { SpriteLayer, Shape, Curve } from "./Sprites";
 import { GroundLayer, GMode, type GroundItem } from "./Ground";
 import { Bolts } from "./Bolts";
 import { Beams } from "./Beams";
+import { Thorns } from "./Thorns";
 import { rgb, mixInto, WHITE } from "./colors";
 
 export interface RingOpts {
@@ -127,6 +130,19 @@ export interface DecalOpts {
   alpha?: number;
 }
 
+export interface ThornOpts {
+  /** number of thorns (default 7) */
+  count?: number;
+  /** tint multiplied over the dark-purple / pink-tip palette (default white) */
+  tint?: string;
+  /** thorn height in world units (default 1.6) */
+  height?: number;
+  /** seconds (default 0.7) */
+  life?: number;
+  /** add a coloured ground burst + debris (default true) */
+  burst?: boolean;
+}
+
 export interface SmokeOpts {
   count?: number;
   color?: string;
@@ -156,6 +172,7 @@ class Delayed {
 
 const LAYER_ADD = 0;
 const LAYER_DECAL = 1;
+const LAYER_WARN = 2;
 const TAU = Math.PI * 2;
 
 /**
@@ -170,8 +187,10 @@ export class Fx {
   readonly smokeLayer: SpriteLayer;
   private groundAdd: GroundLayer;
   private groundDecal: GroundLayer;
+  private groundWarn: GroundLayer;
   private bolts: Bolts;
   private beams: Beams;
+  private thornLayer: Thorns;
   private delayed: Delayed[] = [];
   private tmpC = new THREE.Color();
   private tmpC2 = new THREE.Color();
@@ -195,19 +214,86 @@ export class Fx {
 
   constructor(private scene: THREE.Scene) {
     this.particles = new Particles(scene);
+    // decals sit under the horde (depth tested); glows, telegraphs and
+    // sparkles draw over it so AoE stays readable in a dense crowd
     this.groundDecal = new GroundLayer(scene, 200, false, -6);
-    this.groundAdd = new GroundLayer(scene, 160, true, 5);
+    this.groundWarn = new GroundLayer(scene, 48, false, 4, true);
+    this.groundAdd = new GroundLayer(scene, 160, true, 5, true);
     this.smokeLayer = new SpriteLayer(scene, 220, false, 6);
-    this.sprites = new SpriteLayer(scene, 700, true, 9);
+    this.sprites = new SpriteLayer(scene, 700, true, 9, true);
     this.bolts = new Bolts(scene);
     this.beams = new Beams(scene, 24);
+    this.thornLayer = new Thorns(scene, 256);
     for (let i = 0; i < 32; i++) this.delayed.push(new Delayed());
+    this.hookEvents();
     try {
       const s = localStorage.getItem("sfd.shake");
       if (s !== null) this.shakeScale = Math.max(0, Math.min(1.5, parseFloat(s) || 0));
     } catch {
       /* storage unavailable */
     }
+  }
+
+  /** game-event driven juice (no other system needs to call these) */
+  private hookEvents(): void {
+    const ev = G.events;
+    if (!ev) return;
+    ev.on("enemyKilled", (e) => {
+      if (!e.elite || e.boss) return;
+      this.hitStop(0.05, 0.08);
+      this.ring(e.x, e.z, { radius: 2.4, color: "#ffc34d", life: 0.4, width: 0.45, from: 0.2 });
+      this.glowBall(e.x, 1, e.z, 2.4, "#ffd27a", 0.22);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * TAU + Math.random();
+        this.sprites.spawn(e.x, 1, e.z, Math.cos(a) * 4, 3 + Math.random() * 2, Math.sin(a) * 4, 0.7, 0.1, 0.45, rgb("#fff2c4"), 1, Shape.Star, Curve.Pop, Math.random() * TAU, 4, -8, 1);
+      }
+    });
+    ev.on("pickup", (e) => {
+      const p = G.player;
+      if (!p) return;
+      if (e.kind === "nuke") {
+        G.overlay?.screenFlash("#fff1d0", 0.6, 0.45);
+        this.pillar(p.x, p.z, "#ffb347", { radius: 1.2, height: 14, life: 0.9 });
+        this.rune(p.x, p.z, 4, "#ffb347", 0.9, { spin: 3 });
+      } else if (e.kind === "heal") {
+        this.ring(p.x, p.z, { radius: 1.8, color: "#5cff7a", life: 0.45, width: 0.35, from: 0.3 });
+        for (let i = 0; i < 6; i++) {
+          const a = Math.random() * TAU;
+          this.sprites.spawn(p.x + Math.cos(a) * 0.6, 0.4, p.z + Math.sin(a) * 0.6, 0, 2.2 + Math.random() * 1.5, 0, 0.5, 0.1, 0.6, rgb("#8dffa0"), 1, Shape.Star, Curve.Pop, 0, 2);
+        }
+      } else if (e.kind === "magnet") {
+        this.ring(p.x, p.z, { radius: 3, color: "#7fd7ff", life: 0.5, width: 0.4, from: 0.2 });
+      }
+    });
+    ev.on("levelUp", () => {
+      const p = G.player;
+      if (!p) return;
+      this.pillar(p.x, p.z, "#ffe27a", { radius: 0.9, height: 9, life: 0.9 });
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * TAU;
+        this.sprites.spawn(p.x + Math.cos(a) * 0.8, 0.5, p.z + Math.sin(a) * 0.8, Math.cos(a) * 1.5, 3 + Math.random() * 2, Math.sin(a) * 1.5, 0.55, 0.1, 0.7, rgb("#fff3b0"), 1, Shape.Star, Curve.Pop, 0, 3, -2, 0.5);
+      }
+    });
+    ev.on("upgradeApplied", (e) => {
+      if (e.kind !== "evolve") return;
+      const p = G.player;
+      if (!p) return;
+      G.overlay?.screenFlash("#fff6d8", 0.5, 0.4);
+      this.pillar(p.x, p.z, "#ffcf5a", { radius: 1.4, height: 14, life: 1.2 });
+      this.rune(p.x, p.z, 3.2, "#ffcf5a", 1.4, { spin: 2.5 });
+    });
+    ev.on("playerHurt", () => {
+      const p = G.player;
+      if (!p) return;
+      this.glowBall(p.x, 1, p.z, 1.6, "#ff3b30", 0.18);
+      this.particles.burst(p.x, 1, p.z, { count: 5, color: "#ff5a4a", speed: 4, life: 0.3, size: 0.2, up: 2, gravity: -8 });
+    });
+    ev.on("playerDied", () => {
+      const p = G.player;
+      if (!p) return;
+      this.explosionEx(p.x, p.z, { radius: 2.2, color: "#ff3b30", shake: 0.9, scorch: true });
+      G.overlay?.screenFlash("#ff2a2a", 0.45, 0.6);
+    });
   }
 
   // ---------------------------------------------------------------- helpers
@@ -228,14 +314,18 @@ export class Fx {
     const idx = h % 1024;
     const layer = Math.floor(h / 1024) % 4;
     const gen = Math.floor(h / 4096);
-    const L = layer === LAYER_ADD ? this.groundAdd : this.groundDecal;
+    const L = this.layer(layer);
     const it = L.items[idx];
     if (!it || !it.active || it.gen !== gen) return null;
     return it;
   }
 
+  private layer(id: number): GroundLayer {
+    return id === LAYER_ADD ? this.groundAdd : id === LAYER_WARN ? this.groundWarn : this.groundDecal;
+  }
+
   private itemHandle(layer: number, it: GroundItem): number {
-    const L = layer === LAYER_ADD ? this.groundAdd : this.groundDecal;
+    const L = this.layer(layer);
     return this.handle(layer, L.items.indexOf(it), it.gen);
   }
 
@@ -475,6 +565,43 @@ export class Fx {
     this.stepGround(g, 0);
   }
 
+  /**
+   * Dark thorns erupting from the ground in a ring of `radius` around (x, z),
+   * leaning outward, then sinking back.
+   */
+  thorns(x: number, z: number, radius: number, o: ThornOpts = {}): void {
+    const n = Math.max(1, Math.round((o.count ?? 7) * Math.max(0.5, this.lod())));
+    const tint = rgb(o.tint ?? "#ffffff");
+    const h = o.height ?? 1.6;
+    const life = o.life ?? 0.7;
+    const off = Math.random() * TAU;
+    for (let i = 0; i < n; i++) {
+      const a = off + (i / n) * TAU + (Math.random() - 0.5) * 0.5;
+      const d = radius * (0.25 + Math.random() * 0.75);
+      const tx = x + Math.cos(a) * d;
+      const tz = z + Math.sin(a) * d;
+      const yaw = Math.atan2(Math.cos(a), Math.sin(a));
+      const hh = h * (0.6 + Math.random() * 0.6);
+      this.thornLayer.spawn(tx, tz, yaw, 0.25 + Math.random() * 0.45, hh, hh * (0.16 + Math.random() * 0.06), life * (0.85 + Math.random() * 0.3), Math.random() * 0.08, tint);
+    }
+    // a big central thorn
+    this.thornLayer.spawn(x, z, Math.random() * TAU, 0.1, h * 1.5, h * 0.26, life, 0, tint);
+    if (o.burst !== false) {
+      const glow = this.tmpC.copy(rgb("#c34dff")).multiply(tint);
+      const g = this.groundAdd.take(GMode.Flash, x, 0.08, z, radius * 1.3, 0.35, glow);
+      g.from = 0.5;
+      this.stepGround(g, 0);
+      const r = this.groundAdd.take(GMode.Ring, x, 0.06, z, radius * 1.15, 0.4, glow);
+      r.from = 0.3;
+      r.w = radius * 0.2;
+      this.stepGround(r, 0);
+      this.particles.burst(x, 0.3, z, { count: Math.round(8 * this.lod()), color: "#2a1036", speed: radius * 2.5, life: 0.5, size: 0.22, up: 4, gravity: -14, additive: false, jitter: radius });
+      const d = this.groundDecal.take(GMode.Scorch, x, 0.02, z, radius * 1.1, life + 0.8, this.tmpC2.setRGB(0.06, 0.01, 0.08));
+      d.alpha = 0.6;
+      this.stepGround(d, 0);
+    }
+  }
+
   /** fading ground mark (goo splat or scorch). Returns a handle. */
   decal(x: number, z: number, radius: number, color: string, life = 2.5, o: DecalOpts = {}): number {
     const g = this.groundDecal.take(o.style === "scorch" ? GMode.Scorch : GMode.Splat, x, 0.02, z, radius, life, rgb(color));
@@ -486,9 +613,9 @@ export class Fx {
 
   /** warning circle that fills from the centre over `life` seconds. Returns a handle. */
   telegraph(x: number, z: number, radius: number, life: number, color = "#ff3b30"): number {
-    const g = this.groundDecal.take(GMode.Telegraph, x, 0.025, z, radius, life, rgb(color));
+    const g = this.groundWarn.take(GMode.Telegraph, x, 0.025, z, radius, life, rgb(color));
     this.stepGround(g, 0);
-    return this.itemHandle(LAYER_DECAL, g);
+    return this.itemHandle(LAYER_WARN, g);
   }
 
   /** 4-point star sparkle */
@@ -771,12 +898,15 @@ export class Fx {
 
     for (const g of this.groundAdd.items) if (g.active) this.stepGround(g, dt);
     for (const g of this.groundDecal.items) if (g.active) this.stepGround(g, dt);
+    for (const g of this.groundWarn.items) if (g.active) this.stepGround(g, dt);
     this.groundAdd.upload();
     this.groundDecal.upload();
+    this.groundWarn.upload();
     this.sprites.update(dt);
     this.smokeLayer.update(dt);
     this.bolts.update(dt);
     this.beams.update(dt);
+    this.thornLayer.update(dt);
     this.particles.update(dt);
     G.perf.particles = this.particles.count + this.sprites.n + this.smokeLayer.n;
   }
@@ -784,10 +914,12 @@ export class Fx {
   clear(): void {
     this.groundAdd.clear();
     this.groundDecal.clear();
+    this.groundWarn.clear();
     this.sprites.clear();
     this.smokeLayer.clear();
     this.bolts.clear();
     this.beams.clear();
+    this.thornLayer.clear();
     this.particles.clear();
     for (const d of this.delayed) d.active = false;
     // drop any pending time warp without touching G.timeScale (callers reset it)
@@ -800,10 +932,12 @@ export class Fx {
     this.clear();
     this.groundAdd.dispose();
     this.groundDecal.dispose();
+    this.groundWarn.dispose();
     this.sprites.dispose();
     this.smokeLayer.dispose();
     this.bolts.dispose();
     this.beams.dispose();
+    this.thornLayer.dispose();
     this.particles.dispose();
     void this.scene;
   }
