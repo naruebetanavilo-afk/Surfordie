@@ -2,6 +2,7 @@ import { G } from "../core/G";
 import { Meta } from "../core/Meta";
 import { formatTime, formatNum } from "../core/math";
 import { iconURL, uiIcon, prewarmIcon, prewarmUi } from "./icons";
+import { onTap } from "./tap";
 import { weaponById, WEAPONS } from "../weapons/registry";
 import { passiveById, PASSIVES } from "../upgrades/passives";
 import { RUN_LENGTH } from "../director/Director";
@@ -66,9 +67,12 @@ interface ToastItem {
 
 const WEAPON_SLOTS = 6;
 const PASSIVE_SLOTS = 6;
-const TOAST_LIFE = 2.9;
-const MINI_LIFE = 3.6;
+/** skill toasts sit over the playfield: keep them brief (seconds of play time) */
+const TOAST_LIFE = 1.8;
+const MINI_LIFE = 2.4;
 const MAX_MINIS = 2;
+/** stat lines shown in a big toast (the level-up card already listed them all) */
+const TOAST_LINES = 2;
 /** bosses shown at once (a weak build can face two or three overlapping bosses) */
 const MAX_BOSS_BARS = 3;
 
@@ -106,6 +110,8 @@ export class Hud {
   private announceText: HTMLDivElement;
   private hint: HTMLDivElement;
   private fps: HTMLDivElement;
+  /** HUD blocks that cover the playfield (top bar, kills/pause, slots, boss bars) */
+  private bandEls: HTMLElement[] = [];
 
   private last: Record<string, string | number | boolean> = {};
   private lastRT = 0;
@@ -166,10 +172,12 @@ export class Hud {
     img("chip-icon", kb, uiIcon("skull", 64));
     this.kills = el("span", "chip-val", kb, "0");
     const pause = el("button", "hud-pause interactive", sub);
+    pause.type = "button";
     pause.setAttribute("aria-label", "หยุดชั่วคราว");
     el("span", "", pause);
     el("span", "", pause);
-    pause.addEventListener("click", () => G.screens.togglePause());
+    // onTap: works as a second finger while the joystick thumb is held
+    onTap(pause, () => G.screens.togglePause());
 
     // ---------------------------------------------------------- slots
     const slots = el("div", "hud-slots", this.root);
@@ -182,6 +190,7 @@ export class Hud {
     this.bossBox = el("div", "hud-bosses", this.root);
     for (let k = 0; k < MAX_BOSS_BARS; k++) this.bossViews.push(this.makeBossView(k));
     this.bossMore = el("div", "hud-boss-more hidden", this.bossBox);
+    this.bandEls.push(top, sub, slots, this.bossBox);
 
     // ---------------------------------------------------------- toasts, banner, hint
     this.toastsEl = el("div", "hud-toasts", this.root);
@@ -256,6 +265,28 @@ export class Hud {
 
   show(on: boolean): void {
     this.root.classList.toggle("hidden", !on);
+  }
+
+  /**
+   * Screen rectangles (CSS px, [left, top, right, bottom] per block) of the HUD
+   * blocks that sit over the playfield, so canvas markers (boss arrows) can
+   * stay clear of them. Reads layout: call rarely (on resize / ~2x per second).
+   * Returns the number of rects written.
+   */
+  bandRects(out: Float32Array): number {
+    if (this.root.classList.contains("hidden")) return 0;
+    let n = 0;
+    for (const e of this.bandEls) {
+      if (n * 4 + 4 > out.length) break;
+      const r = e.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) continue;
+      out[n * 4] = r.left;
+      out[n * 4 + 1] = r.top;
+      out[n * 4 + 2] = r.right;
+      out[n * 4 + 3] = r.bottom;
+      n++;
+    }
+    return n;
   }
 
   reset(): void {
@@ -570,7 +601,7 @@ export class Hud {
     const body = el("div", "toast-body", root);
     el("div", "toast-name", body, c.name);
     const lines = c.lines.length ? c.lines : [c.desc];
-    for (let i = 0; i < Math.min(3, lines.length); i++) {
+    for (let i = 0; i < Math.min(TOAST_LINES, lines.length); i++) {
       const [lbl, val] = splitStatLine(lines[i]);
       const d = el("div", `toast-line l${i}`, body);
       el("span", "lbl", d, lbl);

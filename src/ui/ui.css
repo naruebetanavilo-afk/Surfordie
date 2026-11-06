@@ -303,6 +303,15 @@
   transform: translateY(0.15em) scale(0.92);
 }
 
+/* invisible hit area: a >= 44 px touch target (landscape HUD font makes the
+   button itself ~36 px) without growing the visuals. The padding box is
+   2.45em, so the half-extent is 1.225em + the outset. */
+.hud-pause::after {
+  content: "";
+  position: absolute;
+  inset: min(-0.45em, calc(1.225em - 22px));
+}
+
 .hud-pause span {
   width: 0.42em;
   height: 1.15em;
@@ -427,7 +436,7 @@
   position: absolute;
   left: calc(var(--safe-left) + 0.6em);
   bottom: calc(var(--safe-bottom) + 15vh);
-  width: min(64vw, 17.5em);
+  width: min(56vw, 14em);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -435,21 +444,22 @@
   gap: 0.4em;
 }
 
+/* compact row (icon | name + stats) so a level-up covers little playfield */
 .toast {
   --accent: #fff;
   position: relative;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.2em;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6em;
   max-width: 100%;
   animation: toastIn 0.45s cubic-bezier(0.2, 1.5, 0.4, 1) both;
 }
 
 .toast-icon {
   position: relative;
-  width: 4.5em;
-  height: 4.5em;
+  width: 3.2em;
+  height: 3.2em;
   flex: none;
 }
 
@@ -492,10 +502,10 @@
 
 .toast-tag {
   position: absolute;
-  right: -0.9em;
-  top: -0.45em;
-  padding: 0.04em 0.45em;
-  font-size: 0.78em;
+  right: -0.7em;
+  top: -0.55em;
+  padding: 0.02em 0.4em;
+  font-size: 0.68em;
   border: 0.13em solid var(--ink);
   border-radius: 0.4em;
   background: linear-gradient(180deg, #5b4596, #2c2050);
@@ -518,13 +528,14 @@
 .toast-body {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-width: 0;
   padding-left: 0.1em;
 }
 
 .toast-name {
-  font-size: 1.32em;
-  line-height: 1.25;
+  font-size: 1.1em;
+  line-height: 1.2;
   color: var(--txt-yellow);
   text-shadow: var(--outline-drop);
   white-space: nowrap;
@@ -534,8 +545,8 @@
 }
 
 .toast-line {
-  font-size: 1.14em;
-  line-height: 1.25;
+  font-size: 0.92em;
+  line-height: 1.2;
   text-shadow: var(--outline-drop);
   animation: lineIn 0.3s cubic-bezier(0.2, 1.4, 0.4, 1) both;
 }
@@ -1476,6 +1487,7 @@
 .shop-buy {
   --b1: #ffe873;
   --b2: #ff9a12;
+  position: relative;
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -1498,6 +1510,13 @@
 
 .shop-buy:active {
   transform: translateY(0.18em) scale(0.95);
+}
+
+/* invisible hit area filling the card's padding around the button */
+.shop-buy::after {
+  content: "";
+  position: absolute;
+  inset: -0.5em -0.55em;
 }
 
 .shop-buy .btn-ico {
@@ -1598,6 +1617,13 @@
   background: linear-gradient(180deg, #a7ff6e, #2fcf4a);
 }
 
+/* invisible hit area (~44 px tall) reaching into the row padding */
+.switch::after {
+  content: "";
+  position: absolute;
+  inset: -0.6em;
+}
+
 .switch.on i {
   transform: translateX(1.55em);
 }
@@ -1657,16 +1683,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* no overflow clip here: it would also clip the buttons' enlarged hit areas,
+   so the end buttons round their own corners instead */
 .seg {
   margin-left: auto;
   display: flex;
-  overflow: hidden;
   border: 0.14em solid var(--ink);
   border-radius: 0.65em;
   box-shadow: 0 0.16em 0 var(--ink);
 }
 
 .seg-btn {
+  position: relative;
   padding: 0.45em 0.85em;
   font: 800 0.88em var(--font);
   color: #fff;
@@ -1675,6 +1703,29 @@
   border: 0;
   cursor: pointer;
   touch-action: manipulation;
+}
+
+.seg-btn:first-child {
+  border-radius: 0.58em 0 0 0.58em;
+}
+
+.seg-btn:last-child {
+  border-radius: 0 0.58em 0.58em 0;
+}
+
+/* invisible hit area: taller (~44 px), never overlapping the neighbour */
+.seg-btn::after {
+  content: "";
+  position: absolute;
+  inset: -0.6em 0;
+}
+
+.seg-btn:first-child::after {
+  left: -0.5em;
+}
+
+.seg-btn:last-child::after {
+  right: -0.5em;
 }
 
 .seg-btn + .seg-btn {
@@ -1690,6 +1741,13 @@
   font-weight: 600;
   text-align: center;
   opacity: 0.7;
+}
+
+/* quality change that needs a restart (anti-aliasing) */
+.set-note.warn {
+  color: var(--txt-yellow);
+  opacity: 1;
+  text-shadow: var(--outline);
 }
 
 /* =============================================================== LEVEL UP */
@@ -2147,14 +2205,18 @@
   width: min(100%, 16em);
   opacity: 0;
   transform: scale(0.6);
-  pointer-events: none;
   transition: opacity 0.25s, transform 0.35s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+/* invisible until the reveal ends: taps fall through to the skip handler.
+   Needs the #ui prefix to beat `#ui button { pointer-events: auto }`. */
+#ui .chest:not(.done) .chest-ok {
+  pointer-events: none;
 }
 
 .chest.done .chest-ok {
   opacity: 1;
   transform: none;
-  pointer-events: auto;
 }
 
 /* =============================================================== PAUSE */
@@ -2492,6 +2554,17 @@
   gap: 0.55em;
 }
 
+/* results buttons ignore taps until the count-up has mostly played
+   (Screens RESULTS_GUARD); #ui prefix beats `#ui button` */
+.res-actions .btn {
+  transition: transform 0.08s, box-shadow 0.08s, filter 0.15s, opacity 0.25s;
+}
+
+#ui .res-actions:not(.ready) .btn {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 /* =============================================================== LANDSCAPE */
 @media (orientation: landscape) and (max-height: 560px) {
   .hud {
@@ -2511,15 +2584,6 @@
 
   .hud-toasts {
     bottom: calc(var(--safe-bottom) + 5vh);
-  }
-
-  .toast:not(.mini) {
-    flex-direction: row;
-    gap: 0.6em;
-  }
-
-  .toast-body {
-    padding-top: 0.2em;
   }
 
   .hud-announce {
@@ -2722,7 +2786,9 @@
       "stage rewards"
       "hint ok";
     justify-content: center;
-    align-content: center;
+    /* safe: when 5 rewards overflow a short screen, start at the top instead
+       of clipping the title above the scroll origin */
+    align-content: safe center;
     align-items: center;
     column-gap: 2em;
   }
@@ -2823,6 +2889,64 @@
   .res-actions .btn.big {
     font-size: 1.12em;
     padding: 0.45em 0.8em;
+  }
+}
+
+/* ======================================================= WIDE (desktop / tablet) */
+/* At square-or-wider windows taller than a phone the menu camera frames the
+   3D hero big, ~10-30% from the top: in the portrait column it sat behind the
+   logo. Use the landscape three-column menu instead, so the hero stands in the
+   free middle column. (Phones in landscape use the block above.) */
+@media (min-aspect-ratio: 1/1) and (min-height: 561px) {
+  .screen.menu {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(8em, 20vw) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "top top top"
+      "logo . ."
+      "heroes . actions";
+    align-items: end;
+    column-gap: 1em;
+    background: linear-gradient(90deg, rgba(14, 8, 28, 0.85), rgba(14, 8, 28, 0.15) 40%, rgba(14, 8, 28, 0.15) 60%, rgba(14, 8, 28, 0.85));
+  }
+
+  .menu-top {
+    grid-area: top;
+    max-width: none;
+  }
+
+  .logo {
+    grid-area: logo;
+    align-self: center;
+    margin: 0;
+  }
+
+  .logo-title {
+    font-size: clamp(2.4em, 5vw, 4.6em);
+  }
+
+  .menu-spacer {
+    display: none;
+  }
+
+  .menu-bottom {
+    display: contents;
+  }
+
+  .hero-pick {
+    grid-area: heroes;
+  }
+
+  .menu-actions {
+    grid-area: actions;
+  }
+
+  .hero-pick,
+  .menu-actions {
+    width: 100%;
+    max-width: 30em;
+    justify-self: center;
   }
 }
 

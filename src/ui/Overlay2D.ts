@@ -156,6 +156,14 @@ class Num {
 
 const MAX_NUMS = 200;
 const MAX_BARS = 900;
+/** boss arrow: badge centre distance from the screen edges (badge + arrowhead fit) */
+const ARROW_EDGE = 46;
+/** boss arrow: clearance from DOM HUD blocks (the arrowhead reaches ~40 px out) */
+const ARROW_HUD_PAD = 40;
+/** a boss whose feet are this close to (or under) a HUD block counts as hidden */
+const HIDDEN_HUD_PAD = 16;
+/** max HUD blocks tracked for the boss arrow */
+const MAX_HUD_RECTS = 6;
 const H_SIZE = 4096;
 const H_MASK = H_SIZE - 1;
 
@@ -224,6 +232,18 @@ export class Overlay2D {
   private flashColor = "#ffffff";
   private pt = { x: 0, y: 0 };
   private pt2 = { x: 0, y: 0 };
+
+  // boss arrows: DOM HUD blocks + safe-area insets, refreshed on resize and
+  // every 0.25 s while a boss is alive (boss bars come and go; reading layout
+  // every frame would be wasteful)
+  private hudRects = new Float32Array(MAX_HUD_RECTS * 4);
+  private hudN = 0;
+  private hudT = 0;
+  private safeT = 0;
+  private safeR = 0;
+  private safeB = 0;
+  private safeL = 0;
+  private safeProbe: HTMLDivElement | null = null;
 
   private atlasNormal: GlyphAtlas;
   private atlasCrit: GlyphAtlas;
@@ -294,6 +314,28 @@ export class Overlay2D {
     this.canvas.width = Math.round(w * dpr);
     this.canvas.height = Math.round(h * dpr);
     this.vignetteCv = null;
+    this.readSafeArea();
+    // HUD layout depends on the viewport: re-read it the next time it's needed
+    this.hudT = 0;
+  }
+
+  /** safe-area insets in px (env() only resolves inside a real CSS property) */
+  private readSafeArea(): void {
+    let d = this.safeProbe;
+    if (!d) {
+      if (!document.body) return;
+      d = document.createElement("div");
+      d.style.cssText =
+        "position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;" +
+        "padding:var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left)";
+      document.body.appendChild(d);
+      this.safeProbe = d;
+    }
+    const cs = getComputedStyle(d);
+    this.safeT = parseFloat(cs.paddingTop) || 0;
+    this.safeR = parseFloat(cs.paddingRight) || 0;
+    this.safeB = parseFloat(cs.paddingBottom) || 0;
+    this.safeL = parseFloat(cs.paddingLeft) || 0;
   }
 
   clear(): void {
@@ -472,7 +514,7 @@ export class Overlay2D {
     this.drawHpBars(c, simDt);
     this.drawPlayerBar(c, simDt);
     this.drawNumbers(c, simDt);
-    this.drawBossArrow(c);
+    this.drawBossArrows(c, dt);
     this.drawJoystick(c);
     // hurt vignette
     if (this.hurtT > 0) {
@@ -748,26 +790,52 @@ export class Overlay2D {
     }
   }
 
-  /** pulsing arrow + skull badge at the screen edge pointing to an off-screen boss */
-  private drawBossArrow(c: CanvasRenderingContext2D): void {
+  /**
+   * Pulsing arrow + skull badge pointing to each boss the player cannot see:
+   * off-screen, or on screen but under the DOM HUD (top bar, slots, boss bars).
+   * The badge sits where the player->boss ray first meets the safe screen
+   * margin or a HUD block, so it is never drawn underneath the HUD.
+   */
+  private drawBossArrows(c: CanvasRenderingContext2D, dt: number): void {
     const em = G.enemies;
+    const world = G.world;
+    this.hudT -= dt;
+    let ready = false;
     for (let i = 0; i < em.n; i++) {
       if (em.state[i] !== 0 || !em.isBoss(i)) continue;
-      if (G.world.onScreen(em.x[i], em.z[i], -1)) continue;
-      const p = G.player;
-      if (!G.world.project(p.x, 0.5, p.z, this.pt)) continue;
-      G.world.project(em.x[i], 0.5, em.z[i], this.pt2);
-      let dx = this.pt2.x - this.pt.x;
-      let dy = this.pt2.y - this.pt.y;
+      if (!ready) {
+        // once per frame, and only while a boss is alive
+        ready = true;
+        if (this.hudT <= 0) {
+          this.hudT = 0.25;
+          this.hudN = G.hud ? G.hud.bandRects(this.hudRects) : 0;
+        }
+        const p = G.player;
+        if (!world.project(p.x, 0.5, p.z, this.pt)) return;
+      }
+      const pt = this.pt;
+      const pt2 = this.pt2;
+      pt2.x = NaN;
+      world.project(em.x[i], 0.5, em.z[i], pt2);
+      let dx: number;
+      let dy: number;
+      if (pt2.x === pt2.x) {
+        if (this.bossVisible(pt2.x, pt2.y)) continue;
+        dx = pt2.x - pt.x;
+        dy = pt2.y - pt.y;
+      } else {
+        // behind the camera plane (far below the screen): the world direction
+        // is close enough (screen-up = world -Z)
+        dx = em.x[i] - G.player.x;
+        dy = em.z[i] - G.player.z;
+      }
       const l = Math.hypot(dx, dy) || 1;
       dx /= l;
       dy /= l;
-      const m = 46;
-      const tx = dx > 0 ? (this.w - m - this.pt.x) / dx : (m - this.pt.x) / dx;
-      const ty = dy > 0 ? (this.h - m - this.pt.y) / dy : (m - this.pt.y) / dy;
-      const t = Math.min(Math.abs(tx), Math.abs(ty));
-      const ax = this.pt.x + dx * t;
-      const ay = this.pt.y + dy * t;
+      const t = this.arrowDistance(pt.x, pt.y, dx, dy);
+      if (!(t > 0)) continue;
+      const ax = pt.x + dx * t;
+      const ay = pt.y + dy * t;
       const pulse = 1 + Math.sin(G.realTime * 8) * 0.12;
       c.save();
       c.translate(ax, ay);
@@ -808,6 +876,69 @@ export class Overlay2D {
       c.fill();
       c.restore();
     }
+  }
+
+  /** screen point (boss feet) is inside the safe playfield and clear of the HUD */
+  private bossVisible(x: number, y: number): boolean {
+    const m = ARROW_EDGE;
+    if (x < this.safeL + m || x > this.w - this.safeR - m || y < this.safeT + m || y > this.h - this.safeB - m) return false;
+    const r = this.hudRects;
+    const pad = HIDDEN_HUD_PAD;
+    for (let k = 0; k < this.hudN; k++) {
+      const o = k * 4;
+      if (x > r[o] - pad && x < r[o + 2] + pad && y > r[o + 1] - pad && y < r[o + 3] + pad) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Distance along the ray (ox, oy) + t * (dx, dy) to the first obstacle: the
+   * safe-area-inset screen margin or a padded HUD block. <= 0 = no room.
+   */
+  private arrowDistance(ox: number, oy: number, dx: number, dy: number): number {
+    const m = ARROW_EDGE;
+    const left = this.safeL + m;
+    const right = this.w - this.safeR - m;
+    const top = this.safeT + m;
+    const bottom = this.h - this.safeB - m;
+    let t = Infinity;
+    if (dx > 1e-6) t = Math.min(t, (right - ox) / dx);
+    else if (dx < -1e-6) t = Math.min(t, (left - ox) / dx);
+    if (dy > 1e-6) t = Math.min(t, (bottom - oy) / dy);
+    else if (dy < -1e-6) t = Math.min(t, (top - oy) / dy);
+    if (t === Infinity) return 0;
+    const r = this.hudRects;
+    const pad = ARROW_HUD_PAD;
+    for (let k = 0; k < this.hudN; k++) {
+      const o = k * 4;
+      // slab test of the segment [0, t] against the padded block
+      let t0 = 0;
+      let t1 = t;
+      const x0 = r[o] - pad;
+      const y0 = r[o + 1] - pad;
+      const x1 = r[o + 2] + pad;
+      const y1 = r[o + 3] + pad;
+      if (Math.abs(dx) < 1e-6) {
+        if (ox < x0 || ox > x1) continue;
+      } else {
+        const a = (x0 - ox) / dx;
+        const b = (x1 - ox) / dx;
+        t0 = Math.max(t0, Math.min(a, b));
+        t1 = Math.min(t1, Math.max(a, b));
+      }
+      if (Math.abs(dy) < 1e-6) {
+        if (oy < y0 || oy > y1) continue;
+      } else {
+        const a = (y0 - oy) / dy;
+        const b = (y1 - oy) / dy;
+        t0 = Math.max(t0, Math.min(a, b));
+        t1 = Math.min(t1, Math.max(a, b));
+      }
+      // the player itself inside a padded block (tiny screens): ignore that block
+      if (t0 <= 0 || t0 > t1) continue;
+      t = t0;
+    }
+    return t;
   }
 
   private drawJoystick(c: CanvasRenderingContext2D): void {

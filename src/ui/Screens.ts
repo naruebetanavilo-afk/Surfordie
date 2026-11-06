@@ -8,6 +8,7 @@ import { weaponById } from "../weapons/registry";
 import { passiveById } from "../upgrades/passives";
 import { RUN_LENGTH } from "../director/Director";
 import { splitStatLine } from "./Hud";
+import { onTap } from "./tap";
 import type { Choice } from "../weapons/WeaponSystem";
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, parent?: HTMLElement, text?: string): HTMLElementTagNameMap[K] {
@@ -61,6 +62,8 @@ type Quality = keyof typeof QUALITY_NAMES;
 
 /** guard against accidental taps right after a modal opens (ms) */
 const TAP_GUARD = 320;
+/** results: buttons wait for the stat count-up (250 ms delay + 900 ms) to mostly finish */
+const RESULTS_GUARD = 900;
 
 /**
  * Full-screen DOM screens: main menu (hero select, shop, settings), level-up
@@ -138,7 +141,7 @@ export class Screens {
       b.type = "button";
       b.setAttribute("aria-label", "กลับ");
       img("btn-ico", b, uiIcon("back", 64));
-      b.addEventListener("click", () => {
+      onTap(b, () => {
         G.audio.sfx("select");
         onBack();
       });
@@ -230,7 +233,7 @@ export class Screens {
       el("div", "hero-name", card, h.name);
       el("div", "hero-title", card, h.title);
       cards.set(h.id, card);
-      card.addEventListener("click", () => {
+      onTap(card, () => {
         if (this.selectedHero === h.id) return;
         this.selectedHero = h.id;
         G.audio.sfx("select");
@@ -251,7 +254,7 @@ export class Screens {
     });
     refreshPlay();
 
-    play.addEventListener("click", () => {
+    onTap(play, () => {
       const h = HEROES.find((x) => x.id === this.selectedHero) ?? HEROES[0];
       if (locked(h)) {
         if (Meta.unlockHero(h.id, h.price)) {
@@ -275,11 +278,11 @@ export class Screens {
     });
 
     const row = el("div", "menu-row", actions);
-    btn(row, "violet", "ร้านค้า", "bag").addEventListener("click", () => {
+    onTap(btn(row, "violet", "ร้านค้า", "bag"), () => {
       G.audio.sfx("select");
       this.showShop();
     });
-    btn(row, "ghost", "ตั้งค่า", "gear").addEventListener("click", () => {
+    onTap(btn(row, "ghost", "ตั้งค่า", "gear"), () => {
       G.audio.sfx("select");
       this.showSettings(() => this.showMenu());
     });
@@ -344,7 +347,7 @@ export class Screens {
       updaters.push(update);
       update();
 
-      buy.addEventListener("click", () => {
+      onTap(buy, () => {
         if (Meta.buy(up.id)) {
           G.audio.sfx("coin");
           refreshAll();
@@ -365,7 +368,7 @@ export class Screens {
       refund.classList.toggle("disabled", spent === 0);
       setLabel(refund, confirmT ? `แตะอีกครั้งเพื่อคืน ${formatNum(spent)} ทอง` : `คืนทองทั้งหมด (+${formatNum(spent)})`);
     };
-    refund.addEventListener("click", () => {
+    onTap(refund, () => {
       if (Meta.spent() === 0) return;
       if (!confirmT) {
         confirmT = window.setTimeout(() => {
@@ -411,7 +414,7 @@ export class Screens {
         b.classList.toggle("on", get());
         b.setAttribute("aria-pressed", String(get()));
       };
-      b.addEventListener("click", () => {
+      onTap(b, () => {
         set(!get());
         sync();
         G.audio.sfx("select");
@@ -522,18 +525,27 @@ export class Screens {
 
     const q = el("div", "seg", row("กราฟิก", "star"));
     const segBtns: HTMLButtonElement[] = [];
+    // anti-aliasing (MSAA) is fixed when the WebGL context is created: the
+    // resolution cap changes at once, AA only after the game is reopened
+    const aaNow = G.world.renderer.getContextAttributes()?.antialias ?? G.world.quality !== "low";
+    const syncQuality = () => {
+      const k = G.world.quality;
+      segBtns.forEach((x) => x.classList.toggle("on", x.dataset.q === k));
+      const pending = (k !== "low") !== aaNow;
+      note.classList.toggle("warn", pending);
+      note.textContent = pending ? "การลบรอยหยักของภาพจะมีผลหลังเปิดเกมใหม่" : "คุณภาพ \"ต่ำ\" ช่วยให้ลื่นขึ้นบนมือถือรุ่นเก่า";
+    };
     (["low", "medium", "high"] as Quality[]).forEach((k) => {
       const b = el("button", "seg-btn", q, QUALITY_NAMES[k]);
       b.type = "button";
       b.dataset.q = k;
       segBtns.push(b);
-      b.addEventListener("click", () => {
+      onTap(b, () => {
         G.world.setQuality(k);
         G.audio.sfx("select");
-        segBtns.forEach((x) => x.classList.toggle("on", x.dataset.q === k));
+        syncQuality();
       });
     });
-    segBtns.forEach((x) => x.classList.toggle("on", x.dataset.q === G.world.quality));
 
     // screen shake 0..150% (slider 0..1 maps to 0..1.5); read by Fx.shake()
     const SHAKE_MAX = 1.5;
@@ -565,8 +577,10 @@ export class Screens {
       },
     );
 
-    el("div", "set-note", panel, "คุณภาพ \"ต่ำ\" ช่วยให้ลื่นขึ้นบนมือถือรุ่นเก่า");
-    btn(panel, "primary", "ตกลง").addEventListener("click", () => {
+    const note = el("div", "set-note", panel);
+    note.setAttribute("aria-live", "polite");
+    syncQuality();
+    onTap(btn(panel, "primary", "ตกลง"), () => {
       G.audio.sfx("select");
       onBack();
     });
@@ -585,11 +599,14 @@ export class Screens {
     list.classList.toggle("four", choices.length >= 4);
     let picked = false;
     // a press must start after the guard window (stops a held joystick finger
-    // or a double tap from instantly choosing a card)
+    // or a double tap from instantly choosing a card). Pointer taps carry the
+    // time of their own press; keyboard / programmatic clicks fall back to the
+    // last press anywhere on the screen.
     let armedAt = Infinity;
     s.addEventListener("pointerdown", () => {
       armedAt = this.guarded() ? Infinity : performance.now();
     });
+    const armed = (downAt: number) => (downAt >= 0 ? downAt - this.openedAt >= TAP_GUARD : armedAt !== Infinity);
 
     const pick = (c: Choice, card: HTMLElement) => {
       if (picked) return;
@@ -640,9 +657,10 @@ export class Screens {
       }
       el("span", "card-key", card, String(idx + 1));
 
-      card.addEventListener("click", () => {
+      // onTap: a second finger works while the joystick thumb is still down
+      onTap(card, (_e, downAt) => {
         if (picked) return;
-        if (!G.debug.autoplay && (this.guarded() || armedAt === Infinity)) return;
+        if (!G.debug.autoplay && (this.guarded() || !armed(downAt))) return;
         pick(c, card);
       });
       cardEls.push(card);
@@ -735,21 +753,27 @@ export class Screens {
     rewards.forEach((_, i) => this.later(1300 + i * 380, () => reveal(i)));
     this.later(1300 + rewards.length * 380 + 150, finish);
 
-    s.addEventListener("click", (e) => {
+    // tap anywhere to skip the reveal (multi-touch safe, see onTap)
+    onTap(s, (e) => {
       if (e.target instanceof Element && e.target.closest(".chest-ok")) return;
       if (!done && !this.guarded()) finish();
     });
+    let closed = false;
     const collect = () => {
+      if (closed) return;
       if (!done) {
-        finish();
+        // the button is not tappable before the reveal ends (CSS); Enter /
+        // Space skip the reveal but respect the open guard like a tap does
+        if (!this.guarded()) finish();
         return;
       }
       if (!G.debug.autoplay && performance.now() - doneAt < 250) return;
+      closed = true;
       G.audio.sfx("select");
       this.close();
       Flow.resume();
     };
-    ok.addEventListener("click", collect);
+    onTap(ok, collect);
     this.onKey = (e) => {
       if (e.code === "Enter" || e.code === "Space") collect();
     };
@@ -813,18 +837,18 @@ export class Screens {
     if (!G.weapons.passives.size) el("div", "owned-empty", pg, "ยังไม่มีไอเท็ม");
 
     const actions = el("div", "pause-actions", panel);
-    btn(actions, "primary big", "เล่นต่อ", "play").addEventListener("click", () => {
+    onTap(btn(actions, "primary big", "เล่นต่อ", "play"), () => {
       G.audio.sfx("select");
       this.togglePause();
     });
     const row = el("div", "btn-row", actions);
-    btn(row, "ghost", "ตั้งค่า", "gear").addEventListener("click", () => {
+    onTap(btn(row, "ghost", "ตั้งค่า", "gear"), () => {
       G.audio.sfx("select");
       this.showSettings(() => this.showPause());
     });
     const quit = btn(row, "danger", "ออกไปเมนู", "home");
     let armed = false;
-    quit.addEventListener("click", () => {
+    onTap(quit, () => {
       if (!armed) {
         armed = true;
         quit.classList.add("confirm");
@@ -934,14 +958,18 @@ export class Screens {
     el("b", "", bank, formatNum(md.gold));
 
     const actions = el("div", "res-actions", panel);
+    // a panic tap right after death must not skip the results: the buttons
+    // wake up once the count-up has mostly played (CSS fades them in)
+    const resultsGuard = () => !G.debug.autoplay && performance.now() - this.openedAt < RESULTS_GUARD;
+    this.later(RESULTS_GUARD, () => actions.classList.add("ready"));
     const again = btn(actions, "primary big", "เล่นอีกครั้ง", "retry");
-    again.addEventListener("click", () => {
-      if (this.guarded()) return;
+    onTap(again, () => {
+      if (resultsGuard()) return;
       G.audio.sfx("select");
       Flow.startRun(G.heroId);
     });
-    btn(actions, "ghost", "เมนูหลัก", "home").addEventListener("click", () => {
-      if (this.guarded()) return;
+    onTap(btn(actions, "ghost", "เมนูหลัก", "home"), () => {
+      if (resultsGuard()) return;
       G.audio.sfx("select");
       Flow.toMenu();
     });
