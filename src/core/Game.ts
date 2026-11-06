@@ -30,6 +30,9 @@ export class Game {
   private botT = 0;
   private botAngle = 0;
   private endT = -1;
+  /** state seen by the previous frame's render step, and frames spent in the current modal */
+  private renderState: string = "";
+  private modalFrames = 0;
 
   boot(): void {
     this.readDebugFlags();
@@ -261,6 +264,22 @@ export class Game {
     if (chestBtn && G.state === "chest") chestBtn.click();
   }
 
+  /**
+   * Behind the level-up / chest / pause modals the simulation is frozen and
+   * the scene sits under a 72-95% opaque backdrop: redraw it (and re-upload
+   * the instance buffers) only on the first frame of the modal, every 4th
+   * frame (the slowed fx drift stays alive) and after a resize. A WebGL
+   * canvas that is not drawn to keeps showing its last frame.
+   */
+  private shouldRender3D(): boolean {
+    const s = G.state;
+    const entered = s !== this.renderState;
+    this.renderState = s;
+    if (s !== "levelup" && s !== "chest" && s !== "paused") return true;
+    this.modalFrames = entered ? 0 : this.modalFrames + 1;
+    return this.modalFrames % 4 === 0 || G.world.renderRequested;
+  }
+
   private frame(now: number): void {
     requestAnimationFrame((t) => this.frame(t));
     const rawDt = Math.min(0.05, Math.max(0, (now - this.last) / 1000));
@@ -302,10 +321,12 @@ export class Game {
     }
     G.fx.update(G.state === "playing" ? G.dt : rawDt * (G.state === "menu" ? 1 : 0.25));
     G.world.update(rawDt, G.player.x, G.player.z);
-    G.enemies.render();
-    G.projectiles.render();
-    G.pickups.render();
-    G.world.render();
+    if (this.shouldRender3D()) {
+      G.enemies.render();
+      G.projectiles.render();
+      G.pickups.render();
+      G.world.render();
+    }
     G.overlay.draw(rawDt);
     if (G.state === "playing" || G.state === "levelup" || G.state === "chest" || G.state === "paused") G.hud.update();
 

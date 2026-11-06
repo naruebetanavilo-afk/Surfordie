@@ -36,6 +36,13 @@ export class World {
   hemi: THREE.HemisphereLight;
   private vignette: THREE.Mesh;
 
+  /**
+   * True until the next render() after something invalidated the canvas
+   * (resize clears the drawing buffer): callers that throttle rendering
+   * (Game, behind modals) must render when it is set.
+   */
+  renderRequested = true;
+
   /** CSS pixel size of the viewport */
   width = 1;
   height = 1;
@@ -89,7 +96,11 @@ export class World {
     } catch {
       saved = null;
     }
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    // iPadOS and large Android tablets report a desktop user agent: also treat touch-first devices as mobile
+    const isMobile =
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      navigator.maxTouchPoints > 1 ||
+      (window.matchMedia?.("(pointer: coarse)").matches ?? false);
     this.quality = saved ?? (isMobile ? "medium" : "high");
 
     this.renderer = new THREE.WebGLRenderer({
@@ -166,9 +177,11 @@ export class World {
     this.dpr = Math.min(window.devicePixelRatio || 1, cap);
     this.renderer.setPixelRatio(this.dpr);
     this.renderer.setSize(w, h, false);
+    this.renderRequested = true;
     this.camera.aspect = w / h;
     this.fitCamera();
-    G.overlay?.resize(w, h, Math.min(window.devicePixelRatio || 1, 2));
+    // the 2D overlay follows the quality preset too ("low" = same DPR as the 3D canvas)
+    G.overlay?.resize(w, h, this.quality === "low" ? this.dpr : Math.min(window.devicePixelRatio || 1, 2));
   }
 
   /**
@@ -275,6 +288,7 @@ export class World {
   }
 
   render(): void {
+    this.renderRequested = false;
     this.renderer.render(this.scene, this.camera);
     G.perf.drawCalls = this.renderer.info.render.calls;
   }
