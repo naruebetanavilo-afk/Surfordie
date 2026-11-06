@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 /**
  * Part ids understood by the animated character shader (see AnimatedMaterial).
@@ -32,9 +32,11 @@ export interface PartOpts {
 }
 
 /**
- * Builds one merged, non-indexed geometry from primitive parts with
- * per-vertex colour, part id and pivot. Use for enemies (one InstancedMesh per
- * type => one draw call for the whole horde of that type).
+ * Builds one merged, INDEXED geometry from primitive parts with per-vertex
+ * colour, part id and pivot. Use for enemies (one InstancedMesh per type =>
+ * one draw call for the whole horde of that type). Keeping the index (and
+ * welding identical vertices) means the heavy animated vertex shader runs
+ * once per unique vertex instead of three times per triangle.
  */
 export class PartBuilder {
   private geos: THREE.BufferGeometry[] = [];
@@ -43,8 +45,18 @@ export class PartBuilder {
   private e = new THREE.Euler();
 
   add(src: THREE.BufferGeometry, color: THREE.ColorRepresentation, part: number, o: PartOpts = {}): this {
-    let g = src.index ? src.toNonIndexed() : src.clone();
-    g.deleteAttribute("uv");
+    const g = src.clone();
+    src.dispose();
+    if (!g.index) {
+      // every part must be indexed so mergeGeometries can keep the index
+      const n0 = g.attributes.position.count;
+      const idx = new (n0 > 65535 ? Uint32Array : Uint16Array)(n0);
+      for (let i = 0; i < n0; i++) idx[i] = i;
+      g.setIndex(new THREE.BufferAttribute(idx, 1));
+    }
+    for (const k of Object.keys(g.attributes)) {
+      if (k !== "position" && k !== "normal") g.deleteAttribute(k);
+    }
     const pos = o.pos ?? [0, 0, 0];
     const rot = o.rot ?? [0, 0, 0];
     const sc = o.scale ?? [1, 1, 1];
@@ -99,10 +111,13 @@ export class PartBuilder {
   build(): THREE.BufferGeometry {
     const merged = mergeGeometries(this.geos, false);
     if (!merged) throw new Error("PartBuilder: merge failed");
-    merged.computeBoundingSphere();
     for (const g of this.geos) g.dispose();
     this.geos = [];
-    return merged;
+    // weld vertices that are identical in every attribute (sphere seams/poles, shared rims)
+    const out = mergeVertices(merged);
+    merged.dispose();
+    out.computeBoundingSphere();
+    return out;
   }
 }
 

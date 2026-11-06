@@ -121,6 +121,12 @@ class Axe extends Weapon {
     return this.blur;
   }
 
+  /** register the projectile kinds and the blur batch up front (shader prewarm) */
+  prepare(): void {
+    ensureKinds();
+    this.blurBatch();
+  }
+
   update(dt: number): void {
     ensureKinds();
     const L = LV[this.level - 1];

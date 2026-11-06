@@ -7,6 +7,7 @@ import { VFX, col, SPARK_EMBER, DECAL_SCORCH, DECAL_GLOW, DECAL_CRACK } from "./
 import { weaponToonRamp } from "./vfx/toon";
 import { levelLines, easeOutBack, liveSlot } from "./util";
 import { evolvedFrame, glow, INK } from "./iconkit";
+import { uploadInstances } from "../core/gpu";
 
 /**
  * หนามเงามรณะ (Shadow Thorns) — dark violet thorns burst out of the ground in
@@ -100,6 +101,21 @@ function thornGeometry(): THREE.BufferGeometry {
   return g;
 }
 
+let thornRes: { geo: THREE.BufferGeometry; mat: THREE.MeshToonMaterial } | null = null;
+
+/** thorn geometry + material shared by every Spikes instance; never disposed (no recompiles per run) */
+function thorns(): { geo: THREE.BufferGeometry; mat: THREE.MeshToonMaterial } {
+  if (!thornRes) {
+    const mat = new THREE.MeshToonMaterial({
+      vertexColors: true,
+      gradientMap: weaponToonRamp(),
+      emissive: new THREE.Color("#2a0a52"),
+    });
+    thornRes = { geo: thornGeometry(), mat };
+  }
+  return thornRes;
+}
+
 class Spikes extends Weapon {
   private mesh: THREE.InstancedMesh | null = null;
   // struct-of-arrays thorn pool
@@ -149,12 +165,8 @@ class Spikes extends Weapon {
 
   private ensureMesh(): THREE.InstancedMesh {
     if (this.mesh) return this.mesh;
-    const mat = new THREE.MeshToonMaterial({
-      vertexColors: true,
-      gradientMap: weaponToonRamp(),
-      emissive: new THREE.Color("#2a0a52"),
-    });
-    const mesh = new THREE.InstancedMesh(thornGeometry(), mat, MAX_SPIKES);
+    const r = thorns();
+    const mesh = new THREE.InstancedMesh(r.geo, r.mat, MAX_SPIKES);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (let i = 0; i < MAX_SPIKES; i++) mesh.setColorAt(i, this.c.setRGB(1, 1, 1));
     mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
@@ -304,8 +316,7 @@ class Spikes extends Weapon {
     }
     mesh.count = count;
     mesh.visible = count > 0;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    uploadInstances(mesh);
     if (this.hitVol.size > 4000) this.hitVol.clear();
   }
 
@@ -313,12 +324,16 @@ class Spikes extends Weapon {
     this.timer = 0.05;
   }
 
+  /** create the thorn mesh up front (shader prewarm) */
+  prepare(): void {
+    this.ensureMesh();
+  }
+
+  /** removes the mesh; the shared geometry/material stay alive for the next run */
   dispose(): void {
     super.dispose();
     if (this.mesh) {
       G.world.scene.remove(this.mesh);
-      this.mesh.geometry.dispose();
-      (this.mesh.material as THREE.Material).dispose();
       this.mesh.dispose();
       this.mesh = null;
     }

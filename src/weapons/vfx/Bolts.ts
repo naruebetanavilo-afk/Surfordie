@@ -3,6 +3,7 @@ import { G } from "../../core/G";
 
 const SEG = 10;
 const VPB = (SEG + 1) * 2; // vertices per bolt
+const IDX_PER_BOLT = SEG * 6;
 
 const vert = /* glsl */ `
 attribute float aSide;
@@ -94,6 +95,9 @@ export class Bolts {
       premultipliedAlpha: true,
       side: THREE.DoubleSide,
     });
+    // flat camera-facing ribbons: one double-sided pass looks the same as
+    // three's default back-then-front passes, with half the draw calls
+    mat.forceSinglePass = true;
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 11;
@@ -163,9 +167,15 @@ export class Bolts {
   update(dt: number): void {
     this.mesh.visible = this.anyActive;
     if (!this.anyActive) return;
-    let any = false;
+    // slots rewritten this frame (uploaded) and slots still alive (drawn)
+    let lo = this.cap;
+    let hi = -1;
+    let aLo = this.cap;
+    let aHi = -1;
     for (let b = 0; b < this.cap; b++) {
       if (!this.active[b]) continue;
+      if (b < lo) lo = b;
+      hi = b;
       this.t[b] += dt;
       const k = this.t[b] / this.life[b];
       const vo = b * VPB;
@@ -174,7 +184,8 @@ export class Bolts {
         for (let v = 0; v < VPB; v++) this.colA[(vo + v) * 4 + 3] = 0;
         continue;
       }
-      any = true;
+      if (b < aLo) aLo = b;
+      aHi = b;
       this.rej[b] -= dt;
       if (this.rej[b] <= 0) {
         this.rej[b] = 0.045;
@@ -221,14 +232,30 @@ export class Bolts {
         this.colA[c0 + 7] = alpha;
       }
     }
+    if (hi < 0) {
+      this.anyActive = false;
+      this.mesh.visible = false;
+      return;
+    }
+    // upload only the touched slots; inactive slots keep alpha 0 on the GPU
+    const v0 = lo * VPB;
+    const nv = (hi - lo + 1) * VPB;
+    this.posAttr.clearUpdateRanges();
+    this.posAttr.addUpdateRange(v0 * 3, nv * 3);
     this.posAttr.needsUpdate = true;
+    this.colAttr.clearUpdateRanges();
+    this.colAttr.addUpdateRange(v0 * 4, nv * 4);
     this.colAttr.needsUpdate = true;
-    this.anyActive = any;
+    this.anyActive = aHi >= 0;
+    // draw only the span of live bolts
+    if (aHi >= 0) this.mesh.geometry.setDrawRange(aLo * IDX_PER_BOLT, (aHi - aLo + 1) * IDX_PER_BOLT);
+    else this.mesh.visible = false;
   }
 
   clear(): void {
     this.active.fill(0);
     for (let v = 0; v < this.cap * VPB; v++) this.colA[v * 4 + 3] = 0;
+    this.colAttr.clearUpdateRanges();
     this.colAttr.needsUpdate = true;
     this.anyActive = false;
     this.mesh.visible = false;

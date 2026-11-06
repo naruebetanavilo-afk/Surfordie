@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { G } from "../core/G";
 import { hitEnemy, type HitOpts } from "./damage";
+import { uploadInstances } from "../core/gpu";
 
 export interface ProjectileKind {
   geometry: THREE.BufferGeometry;
@@ -272,7 +273,8 @@ export class Projectiles {
       mesh.setMatrixAt(mesh.count++, this.m);
     }
     for (const k of this.kinds) {
-      if (k.mesh.count > 0) k.mesh.instanceMatrix.needsUpdate = true;
+      k.mesh.visible = k.mesh.count > 0;
+      uploadInstances(k.mesh);
     }
   }
 }

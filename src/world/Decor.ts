@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { kitToonMaterial, mergeVariants } from "./ModelKit";
+import { kitToonMaterial } from "./ModelKit";
 import { BIG_PROPS, SMALL_PROPS, buildGrassTuft, type PropDef } from "./DecorProps";
 
 /**
@@ -10,9 +10,11 @@ import { BIG_PROPS, SMALL_PROPS, buildGrassTuft, type PropDef } from "./DecorPro
  * you walk back) and grouped into themed zones (meadow / graveyard / grove).
  * Purely visual: no collision.
  *
- * Draw calls: 4 total (grass, small props, big props, glows). Each props mesh
- * merges all its variants into one geometry and the vertex shader discards
- * the vertices that don't belong to an instance's variant.
+ * Draw calls: grass + glows + one InstancedMesh per prop variant that is
+ * currently in view (up to 7 small + 7 big). All variants of a layer share ONE
+ * material (one shader program), and each instance only pushes its own
+ * variant's triangles (a merged "all variants" mesh would shade every
+ * variant's vertices for every instance).
  *
  * The scatter is rebuilt only when the camera crosses a cell boundary and
  * always covers the conservative view rectangle + margin, so props spawn
@@ -49,10 +51,22 @@ const GRASS_TINTS = ["#ffffff", "#e6f5c8", "#cfe8a8", "#f2ffd8", "#b9dc9a"].map(
 
 interface Layer {
   mesh: THREE.InstancedMesh;
-  iVar?: THREE.InstancedBufferAttribute;
-  props?: PropDef[];
-  tints?: THREE.Color[][];
   n: number;
+  cap: number;
+}
+
+/** a prop layer: one InstancedMesh per variant, all sharing one material */
+interface PropLayer {
+  meshes: THREE.InstancedMesh[];
+  /** instances placed per variant this rebuild */
+  counts: number[];
+  props: PropDef[];
+  tints: THREE.Color[][];
+  material: THREE.Material;
+  big: boolean;
+  /** total instances placed this rebuild (all variants) */
+  n: number;
+  /** total cap across variants (kept from the merged-mesh days) */
   cap: number;
 }
 
@@ -64,8 +78,8 @@ export class Decor {
   /** shared animation clock for wind sway & glow flicker */
   readonly time = { value: 0 };
   private grass: Layer;
-  private small: Layer;
-  private big: Layer;
+  private small: PropLayer;
+  private big: PropLayer;
   private glow: THREE.InstancedMesh;
   private glowMode: THREE.InstancedBufferAttribute;
   private glowN = 0;
@@ -92,8 +106,8 @@ export class Decor {
     );
     this.grass = this.initLayer(grassMesh, MAX_GRASS);
 
-    this.small = this.makePropLayer(SMALL_PROPS, MAX_SMALL, 0.05);
-    this.big = this.makePropLayer(BIG_PROPS, MAX_BIG, 0.012);
+    this.small = this.makePropLayer(SMALL_PROPS, MAX_SMALL, 0.05, false);
+    this.big = this.makePropLayer(BIG_PROPS, MAX_BIG, 0.012, true);
 
     // additive glows (lantern halos, light pools, candle flames, fireflies)
     const glowGeo = new THREE.PlaneGeometry(1, 1);
@@ -109,26 +123,52 @@ export class Decor {
     scene.add(this.glow);
   }
 
-  private initLayer(mesh: THREE.InstancedMesh, cap: number): Layer {
+  private initMesh(mesh: THREE.InstancedMesh): THREE.InstancedMesh {
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.setColorAt(0, this.c.set("#ffffff"));
+    mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
     mesh.frustumCulled = false;
     mesh.count = 0;
+    mesh.visible = false;
     this.scene.add(mesh);
-    return { mesh, n: 0, cap };
+    return mesh;
   }
 
-  private makePropLayer(props: PropDef[], cap: number, wind: number): Layer {
-    const geo = mergeVariants(props.map((p) => p.build()));
-    const iVar = new THREE.InstancedBufferAttribute(new Float32Array(cap), 1);
-    iVar.setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute("iVar", iVar);
-    const mesh = new THREE.InstancedMesh(geo, kitToonMaterial({ variants: true, wind, time: this.time }), cap);
-    const layer = this.initLayer(mesh, cap);
-    layer.iVar = iVar;
-    layer.props = props;
-    layer.tints = props.map((p) => (p.tints ?? ["#ffffff"]).map((t) => new THREE.Color(t)));
-    return layer;
+  private initLayer(mesh: THREE.InstancedMesh, cap: number): Layer {
+    return { mesh: this.initMesh(mesh), n: 0, cap };
+  }
+
+  private makePropLayer(props: PropDef[], cap: number, wind: number, big: boolean): PropLayer {
+    const material = kitToonMaterial({ wind, time: this.time });
+    // every variant can take the whole layer budget (zones can be dominated by one prop)
+    const meshes = props.map((p) => this.initMesh(new THREE.InstancedMesh(p.build(), material, cap)));
+    return {
+      meshes,
+      counts: props.map(() => 0),
+      props,
+      tints: props.map((p) => (p.tints ?? ["#ffffff"]).map((t) => new THREE.Color(t))),
+      material,
+      big,
+      n: 0,
+      cap,
+    };
+  }
+
+  /** upload only the instances written this rebuild */
+  private commit(mesh: THREE.InstancedMesh, count: number): void {
+    mesh.count = count;
+    mesh.visible = count > 0;
+    if (count === 0) return;
+    const im = mesh.instanceMatrix;
+    im.clearUpdateRanges();
+    im.addUpdateRange(0, count * 16);
+    im.needsUpdate = true;
+    const ic = mesh.instanceColor;
+    if (ic) {
+      ic.clearUpdateRanges();
+      ic.addUpdateRange(0, count * 3);
+      ic.needsUpdate = true;
+    }
   }
 
   private glowMaterial(): THREE.ShaderMaterial {
@@ -233,24 +273,24 @@ export class Decor {
     this.glowN++;
   }
 
-  private placeProp(layer: Layer, v: number, x: number, z: number, gx: number, gz: number, salt: number): void {
-    if (layer.n >= layer.cap || !layer.props || !layer.iVar || !layer.tints) return;
+  private placeProp(layer: PropLayer, v: number, x: number, z: number, gx: number, gz: number, salt: number): void {
+    if (layer.n >= layer.cap) return;
     const def = layer.props[v];
-    const h = (k: number): number => this.hash(gx, gz, salt + k);
-    const sc = (def.scale[0] + (def.scale[1] - def.scale[0]) * h(1)) * (layer === this.big ? 1.3 : 1.45);
+    const mesh = layer.meshes[v];
+    const sc = (def.scale[0] + (def.scale[1] - def.scale[0]) * this.hash(gx, gz, salt + 1)) * (layer.big ? 1.3 : 1.45);
     const tilt = def.tilt ?? 0;
     // face mostly towards the camera (+Z) so props read well, with some variety
-    const yaw = (h(2) - 0.5) * (layer === this.big ? 1.6 : Math.PI * 2);
-    this.e.set((h(3) - 0.5) * tilt * 2, yaw, (h(4) - 0.5) * tilt * 2);
+    const yaw = (this.hash(gx, gz, salt + 2) - 0.5) * (layer.big ? 1.6 : Math.PI * 2);
+    this.e.set((this.hash(gx, gz, salt + 3) - 0.5) * tilt * 2, yaw, (this.hash(gx, gz, salt + 4) - 0.5) * tilt * 2);
     this.q.setFromEuler(this.e);
     this.p.set(x, 0, z);
     this.s.setScalar(sc);
     this.m.compose(this.p, this.q, this.s);
-    const i = layer.n++;
-    layer.mesh.setMatrixAt(i, this.m);
-    layer.iVar.setX(i, v);
+    layer.n++;
+    const i = layer.counts[v]++;
+    mesh.setMatrixAt(i, this.m);
     const tints = layer.tints[v];
-    layer.mesh.setColorAt(i, tints[Math.floor(h(5) * tints.length) % tints.length]);
+    mesh.setColorAt(i, tints[Math.floor(this.hash(gx, gz, salt + 5) * tints.length) % tints.length]);
     if (def.glows) {
       for (const g of def.glows) {
         this.v.set(g.x, g.y, g.z).applyMatrix4(this.m);
@@ -275,8 +315,10 @@ export class Decor {
 
     const grass = this.grass;
     grass.n = 0;
-    this.small.n = 0;
-    this.big.n = 0;
+    for (const layer of [this.small, this.big]) {
+      layer.n = 0;
+      layer.counts.fill(0);
+    }
     this.glowN = 0;
 
     for (let gz = ccz - rz; gz <= ccz + rz; gz++) {
@@ -335,24 +377,31 @@ export class Decor {
       }
     }
 
-    for (const layer of [this.grass, this.small, this.big]) {
-      layer.mesh.count = layer.n;
-      layer.mesh.instanceMatrix.needsUpdate = true;
-      if (layer.mesh.instanceColor) layer.mesh.instanceColor.needsUpdate = true;
-      if (layer.iVar) layer.iVar.needsUpdate = true;
+    this.commit(grass.mesh, grass.n);
+    for (const layer of [this.small, this.big]) {
+      for (let v = 0; v < layer.meshes.length; v++) this.commit(layer.meshes[v], layer.counts[v]);
     }
-    this.glow.count = this.glowN;
-    this.glow.instanceMatrix.needsUpdate = true;
-    if (this.glow.instanceColor) this.glow.instanceColor.needsUpdate = true;
-    this.glowMode.needsUpdate = true;
+    const glowN = this.glowN;
+    this.commit(this.glow, glowN);
+    if (glowN > 0) {
+      this.glowMode.clearUpdateRanges();
+      this.glowMode.addUpdateRange(0, glowN);
+      this.glowMode.needsUpdate = true;
+    }
   }
 
   dispose(): void {
-    for (const layer of [this.grass, this.small, this.big]) {
-      this.scene.remove(layer.mesh);
-      layer.mesh.geometry.dispose();
-      (layer.mesh.material as THREE.Material).dispose();
-      layer.mesh.dispose();
+    this.scene.remove(this.grass.mesh);
+    this.grass.mesh.geometry.dispose();
+    (this.grass.mesh.material as THREE.Material).dispose();
+    this.grass.mesh.dispose();
+    for (const layer of [this.small, this.big]) {
+      for (const mesh of layer.meshes) {
+        this.scene.remove(mesh);
+        mesh.geometry.dispose();
+        mesh.dispose();
+      }
+      layer.material.dispose();
     }
     this.scene.remove(this.glow);
     this.glow.geometry.dispose();

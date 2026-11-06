@@ -27,7 +27,7 @@ class WeaponVfx {
   get sparkles(): Sparkles {
     if (!this._sparkles) {
       this._sparkles = new Sparkles(G.world.scene, 4096);
-      this._sparkles.density = G.world.quality === "low" ? 0.5 : 1;
+      this.applyQuality();
     }
     return this._sparkles;
   }
@@ -56,6 +56,22 @@ class WeaponVfx {
   begin(dt: number): void {
     vfxClock.t += dt;
     this.dt = dt;
+    // follow the graphics setting live (it can change from the pause menu)
+    this.applyQuality();
+  }
+
+  /** spawn density follows the current graphics quality */
+  applyQuality(): void {
+    if (this._sparkles) this._sparkles.density = G.world.quality === "low" ? 0.5 : 1;
+  }
+
+  /** create every layer now (boot-time shader prewarm) */
+  prepare(): void {
+    void this.sparkles;
+    void this.decals;
+    void this.dark;
+    void this.domes;
+    void this.bolts;
   }
 
   flush(): void {

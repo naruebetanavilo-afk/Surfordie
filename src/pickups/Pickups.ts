@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { G } from "../core/G";
 import { ModelKit, place, box, sph, cyl, torus, kitToonMaterial } from "../world/ModelKit";
+import { uploadInstances, uploadItems } from "../core/gpu";
 
 export type PickupKind = "xp" | "coin" | "heal" | "magnet" | "chest" | "nuke";
 const KINDS: PickupKind[] = ["xp", "coin", "heal", "magnet", "chest", "nuke"];
@@ -535,19 +536,14 @@ export class Pickups {
       this.m.compose(this.pv, this.q, this.sv);
       mesh.setMatrixAt(mesh.count++, this.m);
     }
+    // upload only the instances written this frame (not the whole capacity)
     for (const m of this.meshes) {
       m.visible = m.count > 0;
-      if (m.count > 0) {
-        m.instanceMatrix.needsUpdate = true;
-        if (m.instanceColor) m.instanceColor.needsUpdate = true;
-      }
+      uploadInstances(m);
     }
     this.glow.count = this.glowN;
     this.glow.visible = this.glowN > 0;
-    if (this.glowN > 0) {
-      this.glow.instanceMatrix.needsUpdate = true;
-      if (this.glow.instanceColor) this.glow.instanceColor.needsUpdate = true;
-      this.glowMode.needsUpdate = true;
-    }
+    uploadInstances(this.glow);
+    uploadItems(this.glowMode, this.glowN);
   }
 }

@@ -11,6 +11,35 @@ export interface SpriteBatchOpts {
   opacity?: number;
 }
 
+let quadGeo: THREE.PlaneGeometry | null = null;
+const materials = new Map<string, THREE.MeshBasicMaterial>();
+
+/**
+ * Batches share one quad geometry and one material per look (texture +
+ * blending + depth test + opacity). They are never disposed, so a new run
+ * (new weapon instances) reuses the already compiled shader programs.
+ */
+function sharedMaterial(texture: THREE.Texture, additive: boolean, depthTest: boolean, opacity: number): THREE.MeshBasicMaterial {
+  const key = `${texture.uuid}|${additive ? 1 : 0}|${depthTest ? 1 : 0}|${opacity}`;
+  let mat = materials.get(key);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      depthTest,
+      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+      opacity,
+      side: THREE.DoubleSide,
+    });
+    // flat quads: one double-sided pass looks the same as three's default
+    // back-then-front passes, with half the draw calls
+    mat.forceSinglePass = true;
+    materials.set(key, mat);
+  }
+  return mat;
+}
+
 /**
  * Textured quads whose transforms are rewritten every frame from CPU state
  * (things that follow projectiles or orbit the hero). One InstancedMesh, one
@@ -34,18 +63,9 @@ export class SpriteBatch {
     readonly cap: number,
     o: SpriteBatchOpts = {},
   ) {
-    const geo = new THREE.PlaneGeometry(1, 1);
-    const additive = o.additive ?? true;
-    const mat = new THREE.MeshBasicMaterial({
-      map: texture,
-      transparent: true,
-      depthWrite: false,
-      depthTest: o.depthTest ?? true,
-      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-      opacity: o.opacity ?? 1,
-      side: THREE.DoubleSide,
-    });
-    this.mesh = new THREE.InstancedMesh(geo, mat, cap);
+    if (!quadGeo) quadGeo = new THREE.PlaneGeometry(1, 1);
+    const mat = sharedMaterial(texture, o.additive ?? true, o.depthTest ?? true, o.opacity ?? 1);
+    this.mesh = new THREE.InstancedMesh(quadGeo, mat, cap);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (let i = 0; i < cap; i++) this.mesh.setColorAt(i, this.c.setRGB(1, 1, 1));
     this.mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
@@ -94,10 +114,9 @@ export class SpriteBatch {
     ic.needsUpdate = true;
   }
 
+  /** remove the batch; the shared geometry/material (and their programs) stay alive */
   dispose(): void {
     this.mesh.removeFromParent();
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
     this.mesh.dispose();
   }
 }

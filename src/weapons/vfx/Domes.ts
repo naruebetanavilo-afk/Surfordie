@@ -88,7 +88,9 @@ export class Domes {
   private readonly attrs: THREE.InstancedBufferAttribute[];
   private head = 0;
   private used = 0;
-  private dirty = false;
+  /** slot range written since the last upload (lo > hi = clean) */
+  private dirtyLo = 1 << 30;
+  private dirtyHi = -1;
   private aliveUntil = -1;
 
   constructor(
@@ -156,19 +158,29 @@ export class Domes {
     C[o + 1] = color.g;
     C[o + 2] = color.b;
     C[o + 3] = intensity;
-    this.dirty = true;
+    this.markDirty(i);
   }
 
   update(): void {
     this.mat.uniforms.uTime.value = vfxClock.t;
     this.geo.instanceCount = this.used;
     this.mesh.visible = vfxClock.t < this.aliveUntil;
-    if (!this.dirty) return;
+    if (this.dirtyHi < 0) return;
+    // upload only the slots written since the last flush
+    const start = this.dirtyLo * 4;
+    const count = (this.dirtyHi - this.dirtyLo + 1) * 4;
     for (const a of this.attrs) {
       a.clearUpdateRanges();
+      a.addUpdateRange(start, count);
       a.needsUpdate = true;
     }
-    this.dirty = false;
+    this.dirtyLo = 1 << 30;
+    this.dirtyHi = -1;
+  }
+
+  private markDirty(i: number): void {
+    if (i < this.dirtyLo) this.dirtyLo = i;
+    if (i > this.dirtyHi) this.dirtyHi = i;
   }
 
   clear(): void {
@@ -177,7 +189,8 @@ export class Domes {
     this.head = 0;
     this.used = 0;
     this.aliveUntil = -1;
-    this.dirty = true;
+    this.dirtyLo = 0;
+    this.dirtyHi = this.cap - 1;
     this.update();
   }
 }

@@ -27,6 +27,11 @@ class Slash extends Weapon {
   private queue: { t: number; dx: number; dz: number }[] = [];
   private swingT = 1;
 
+  /** register the evolved crescent-wave projectile kind up front (shader prewarm) */
+  prepare(): void {
+    ensureWaveKind();
+  }
+
   update(dt: number): void {
     const p = G.player;
     const L = LV[this.level - 1];

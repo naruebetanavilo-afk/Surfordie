@@ -60,6 +60,12 @@ class Missile extends Weapon {
     return this.cores;
   }
 
+  /** register the projectile kinds and the core batch up front (shader prewarm) */
+  prepare(): void {
+    ensureKind();
+    this.coreBatch();
+  }
+
   update(dt: number): void {
     ensureKind();
     const L = LV[this.level - 1];
