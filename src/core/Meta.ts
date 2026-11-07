@@ -23,6 +23,12 @@ const pct = (v: number): string => `+${Math.round(v * 100)}%`;
 /** gently super-linear price curve: base, then ~x2.2, x3.6 ... */
 const curve = (base: number) => (l: number) => Math.round((base * Math.pow(l, 1.7)) / 5) * 5;
 
+/** reroll / skip / banish charges every run starts with before shop upgrades */
+export const LEVELUP_BASE_CHARGES = 1;
+
+/** level-up decision timer choices in seconds (0 = unlimited) */
+export const PICK_TIMER_DEFAULT = 10;
+
 export const SHOP: ShopUpgrade[] = [
   {
     id: "might",
@@ -174,6 +180,38 @@ export const SHOP: ShopUpgrade[] = [
     color: "#fff3a6",
     effect: (l) => `${l} ครั้ง`,
   },
+  // ---- level-up helpers: charges per run on the level-up screen (base 1 each).
+  // They are not player stats: WeaponSystem reads Meta.level(id) at run start.
+  {
+    id: "reroll",
+    name: "สุ่มใหม่",
+    desc: "สุ่มการ์ดเลเวลอัปใหม่ได้ +1 ครั้งต่อรอบ",
+    maxLevel: 3,
+    price: curve(70),
+    apply: () => {},
+    color: "#3de0ff",
+    effect: (l) => `${LEVELUP_BASE_CHARGES + l} ครั้ง`,
+  },
+  {
+    id: "skip",
+    name: "ข้าม",
+    desc: "ข้ามการเลือกแล้วรับทองแทน +1 ครั้งต่อรอบ",
+    maxLevel: 2,
+    price: curve(50),
+    apply: () => {},
+    color: "#ffb43d",
+    effect: (l) => `${LEVELUP_BASE_CHARGES + l} ครั้ง`,
+  },
+  {
+    id: "banish",
+    name: "ตัดทิ้ง",
+    desc: "ตัดการ์ดที่ไม่อยากได้ออกจากรอบนี้ +1 ครั้งต่อรอบ",
+    maxLevel: 3,
+    price: curve(90),
+    apply: () => {},
+    color: "#ff4f6a",
+    effect: (l) => `${LEVELUP_BASE_CHARGES + l} ครั้ง`,
+  },
 ];
 
 export interface MetaData {
@@ -198,6 +236,11 @@ export interface MetaData {
   showFps: boolean;
   /** the "drag to move" hint has been completed once */
   tutorialDone: boolean;
+  // ---- level-up systems
+  /** AUTO mode: level-ups apply the recommended card without pausing; chests close by themselves */
+  autoPick: boolean;
+  /** level-up decision time in seconds; 0 = unlimited */
+  pickTimer: number;
 }
 
 const KEY = "sfd.meta.v1";
@@ -219,6 +262,8 @@ function defaults(): MetaData {
     totalKills: 0,
     showFps: false,
     tutorialDone: false,
+    autoPick: false,
+    pickTimer: PICK_TIMER_DEFAULT,
   };
 }
 
@@ -322,6 +367,17 @@ export const Meta = {
     this.data.unlocked.push(heroId);
     this.save();
     return true;
+  },
+  /** level-up decision time in seconds, 0 = unlimited (hand-edited saves are clamped) */
+  pickSeconds(): number {
+    const t = this.data.pickTimer;
+    return t > 0 ? Math.max(3, Math.min(60, t)) : 0;
+  },
+  /** turn AUTO level-up mode on/off and persist it */
+  setAutoPick(on: boolean): void {
+    if (this.data.autoPick === on) return;
+    this.data.autoPick = on;
+    this.save();
   },
   applyShop(s: PlayerStats): void {
     for (const up of SHOP) {

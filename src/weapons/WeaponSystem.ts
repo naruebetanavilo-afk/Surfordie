@@ -6,6 +6,7 @@ import type { Weapon } from "./types";
 import { iconURL, iconBg } from "../ui/icons";
 import { VFX } from "./vfx";
 import { glow, star4, INK } from "./iconkit";
+import { Meta, LEVELUP_BASE_CHARGES } from "../core/Meta";
 
 export interface Choice {
   kind: "weapon" | "passive" | "evolve" | "gold" | "heal";
@@ -22,11 +23,33 @@ export interface Choice {
   isNew: boolean;
 }
 
+/** level-up screen helpers that cost a per-run charge */
+export type LevelUpAction = "reroll" | "skip" | "banish";
+
+/** options for {@link WeaponSystem.rollChoices} (all optional) */
+export interface RollOptions {
+  /** choice keys (see {@link choiceKey}) that must not be offered, e.g. cards still on screen */
+  exclude?: Iterable<string>;
+  /** choice keys offered only reluctantly (a reroll prefers fresh cards) */
+  avoid?: Iterable<string>;
+  /** drop the "at least one weapon card" rule (single-slot replacement after a banish) */
+  anyKind?: boolean;
+}
+
+/** stable identity of an offer: "weapon:axe", "passive:might", "gold:gold" ... */
+export function choiceKey(c: { kind: Choice["kind"]; id: string }): string {
+  return `${c.kind}:${c.id}`;
+}
+
 export class WeaponSystem {
   weapons: Weapon[] = [];
   passives = new Map<string, number>();
   readonly maxWeapons = 6;
   readonly maxPassives = 6;
+  /** reroll / skip / banish charges left this run (base + permanent shop levels, refilled by reset()) */
+  readonly charges: Record<LevelUpAction, number> = { reroll: 0, skip: 0, banish: 0 };
+  /** "weapon:id" / "passive:id" keys banished for the rest of the run (never offered again) */
+  readonly banished = new Set<string>();
 
   constructor() {
     // G.events is created before the weapon system during boot
@@ -55,8 +78,63 @@ export class WeaponSystem {
     VFX.clear();
     this.weapons = [];
     this.passives.clear();
+    this.banished.clear();
+    for (const a of ["reroll", "skip", "banish"] as const) this.charges[a] = LEVELUP_BASE_CHARGES + Meta.level(a);
     if (startWeapon) this.addWeapon(startWeapon);
     this.applyDebugLoadout();
+  }
+
+  // ------------------------------------------------------------ level-up helpers
+
+  /** spend one charge of a level-up action; false when none are left */
+  useCharge(a: LevelUpAction): boolean {
+    if (this.charges[a] <= 0) return false;
+    this.charges[a]--;
+    return true;
+  }
+
+  /** only weapon / passive offers can be banished (not evolutions or the gold / heal fillers) */
+  canBanish(c: Choice): boolean {
+    return c.kind === "weapon" || c.kind === "passive";
+  }
+
+  /** remove an offer from every later level-up roll and chest of this run */
+  banish(c: Choice): boolean {
+    if (!this.canBanish(c)) return false;
+    this.banished.add(choiceKey(c));
+    return true;
+  }
+
+  isBanished(kind: "weapon" | "passive", id: string): boolean {
+    return this.banished.size > 0 && this.banished.has(`${kind}:${id}`);
+  }
+
+  /** gold a skipped level-up pays (grows a little with run time, greed applies) */
+  skipGold(): number {
+    const base = 15 + 3 * Math.floor(Math.max(0, G.time) / 60);
+    return Math.max(1, Math.round(base * (G.player?.stats.greed ?? 1)));
+  }
+
+  /**
+   * Skip a level-up: pays {@link skipGold} and shows a gold toast. Does not
+   * emit "upgradeApplied" (nothing was upgraded). Returns the toast choice.
+   */
+  skipLevel(): Choice {
+    const g = this.skipGold();
+    G.stats.gold += g;
+    const c: Choice = {
+      kind: "gold",
+      id: "skip",
+      level: 0,
+      name: "ข้ามการเลือก",
+      desc: `รับทอง +${g}`,
+      lines: [`ทอง +${g}`],
+      icon: iconURL("f:gold", drawGoldBag),
+      color: "#ffcc33",
+      isNew: false,
+    };
+    G.hud.toast(c);
+    return c;
   }
 
   /**
@@ -225,35 +303,47 @@ export class WeaponSystem {
     return m;
   }
 
-  /** roll level-up choices */
-  rollChoices(count?: number): Choice[] {
+  /**
+   * Roll level-up choices (3, or 4 with luck). Banished items are never
+   * offered. `opts` (optional) excludes / de-prioritises specific offers for
+   * rerolls and single-slot replacements; the result can then be shorter than
+   * `count` when the pool runs dry (an empty pool falls back to gold / heal).
+   */
+  rollChoices(count?: number, opts?: RollOptions): Choice[] {
     const n = count ?? (G.rng.next() < 0.1 * (G.player.stats.luck - 0.5) ? 4 : 3);
+    const exclude = opts?.exclude ? new Set(opts.exclude) : null;
+    const avoid = opts?.avoid ? new Set(opts.avoid) : null;
     const pool: { c: () => Choice; w: number; weapon: boolean }[] = [];
+    const add = (kind: "weapon" | "passive", id: string, w: number, c: () => Choice): void => {
+      const key = `${kind}:${id}`;
+      if (this.banished.has(key) || exclude?.has(key)) return;
+      pool.push({ c, w: avoid?.has(key) ? w * 0.12 : w, weapon: kind === "weapon" });
+    };
     const wanted = this.wantedPassives();
     const few = this.weapons.length < 3;
     for (const w of this.weapons) {
       if (w.level < w.def.maxLevel) {
         // owned weapons are the backbone of a build: favour them, more so close to max
-        pool.push({ c: () => this.weaponChoice(w.def.id), w: 1.45 + (w.level >= 5 ? 0.25 : 0), weapon: true });
+        add("weapon", w.def.id, 1.45 + (w.level >= 5 ? 0.25 : 0), () => this.weaponChoice(w.def.id));
       }
     }
     if (this.weapons.length < this.maxWeapons) {
       const nw = few ? 1.25 : 0.75;
-      for (const d of WEAPONS) if (!this.get(d.id)) pool.push({ c: () => this.weaponChoice(d.id), w: nw, weapon: true });
+      for (const d of WEAPONS) if (!this.get(d.id)) add("weapon", d.id, nw, () => this.weaponChoice(d.id));
     }
     for (const [id, l] of this.passives) {
       const d = passiveById(id)!;
-      if (l < d.maxLevel) pool.push({ c: () => this.passiveChoice(id), w: 0.95 + (wanted.get(id) ?? 0) * 0.4, weapon: false });
+      if (l < d.maxLevel) add("passive", id, 0.95 + (wanted.get(id) ?? 0) * 0.4, () => this.passiveChoice(id));
     }
     if (this.passives.size < this.maxPassives) {
       for (const d of PASSIVES) {
         if (this.passives.has(d.id)) continue;
         const want = wanted.get(d.id);
-        pool.push({ c: () => this.passiveChoice(d.id), w: want !== undefined ? 0.9 + want * 1.4 : 0.6, weapon: false });
+        add("passive", d.id, want !== undefined ? 0.9 + want * 1.4 : 0.6, () => this.passiveChoice(d.id));
       }
     }
     const out: Choice[] = [];
-    let hasWeapon = false;
+    let hasWeapon = !!opts?.anyKind;
     while (out.length < n && pool.length) {
       // guarantee at least one weapon card when any is available
       if (out.length === n - 1 && !hasWeapon) {
@@ -270,7 +360,10 @@ export class WeaponSystem {
       out.push(pool[k].c());
       pool.splice(k, 1);
     }
-    if (out.length === 0) return this.fillerChoices();
+    if (out.length === 0) {
+      const fill = this.fillerChoices();
+      return exclude ? fill.filter((c) => !exclude.has(choiceKey(c))).slice(0, n) : fill;
+    }
     return out;
   }
 
@@ -318,13 +411,13 @@ export class WeaponSystem {
       const opts: Choice[] = [];
       const weights: number[] = [];
       for (const w of this.weapons) {
-        if (w.level < w.def.maxLevel) {
+        if (w.level < w.def.maxLevel && !this.isBanished("weapon", w.def.id)) {
           opts.push(this.weaponChoice(w.def.id));
           weights.push(1.6);
         }
       }
       for (const [id, l] of this.passives) {
-        if (l < passiveById(id)!.maxLevel) {
+        if (l < passiveById(id)!.maxLevel && !this.isBanished("passive", id)) {
           opts.push(this.passiveChoice(id));
           weights.push(1);
         }
