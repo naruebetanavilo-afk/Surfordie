@@ -143,9 +143,15 @@ export class Screens {
 
   /**
    * Compact "ออโต้" toggle (glyph + label + mini switch) used on the level-up
-   * and pause screens. `onChange` runs after the setting flipped.
+   * and pause screens. `onChange` runs after the setting flipped; taps are
+   * ignored while `blocked(downAt)` returns true. Returns the button and a
+   * `toggle()` for keyboard shortcuts (bypasses the tap check).
    */
-  private autoToggle(parent: HTMLElement, onChange?: (on: boolean) => void): HTMLButtonElement {
+  private autoToggle(
+    parent: HTMLElement,
+    onChange?: (on: boolean) => void,
+    blocked?: (downAt: number) => boolean,
+  ): { el: HTMLButtonElement; toggle: () => void } {
     const b = el("button", "lu-auto", parent);
     b.type = "button";
     img("lu-auto-ico", b, luIcon("auto", 64));
@@ -159,13 +165,16 @@ export class Screens {
       b.setAttribute("aria-label", on ? "ออโต้เลือกสกิล: เปิด" : "ออโต้เลือกสกิล: ปิด");
     };
     sync();
-    onTap(b, () => {
+    const toggle = () => {
       Meta.setAutoPick(!Meta.data.autoPick);
       G.audio.sfx("select");
       sync();
       onChange?.(Meta.data.autoPick);
+    };
+    onTap(b, (_e, downAt) => {
+      if (!blocked?.(downAt)) toggle();
     });
-    return b;
+    return { el: b, toggle };
   }
 
   /** true while a freshly opened modal should ignore taps */
@@ -688,12 +697,17 @@ export class Screens {
     const fill = el("div", "lu-timer-fill", track);
     el("span", "lu-timer-cap", track, total > 0 ? "เลือกให้อัตโนมัติใน" : "ไม่จำกัดเวลา");
     const secEl = el("b", "lu-timer-sec", timer, total > 0 ? String(total) : "∞");
-    const autoBtn = this.autoToggle(bar, (on) => {
-      // AUTO on: take the recommendation now; Game resolves the remaining levels
-      if (!on) return;
-      if (busy) this.later(320, () => pick(rec, true));
-      else pick(rec, true);
-    });
+    const autoCtl = this.autoToggle(
+      bar,
+      (on) => {
+        // AUTO on: take the recommendation now; Game resolves the remaining levels
+        if (!on) return;
+        if (busy) this.later(320, () => pick(rec, true));
+        else pick(rec, true);
+      },
+      (downAt) => picked || !tapOk(downAt),
+    );
+    el("span", "lu-key", autoCtl.el, "A");
 
     const list = el("div", "card-list", s);
     const foot = el("div", "lu-actions", s);
@@ -800,6 +814,7 @@ export class Screens {
       const l = el("b", "lu-act-label", t, label);
       const c = el("small", "lu-act-cap", t, cap);
       const n = el("span", "lu-act-n", b);
+      el("span", "lu-key", b, a === "reroll" ? "R" : a === "skip" ? "S" : "B");
       acts[a] = { b, n, label: l, cap: c };
       onTap(b, (_e, downAt) => {
         if (picked || busy || !tapOk(downAt)) return;
@@ -1001,7 +1016,7 @@ export class Screens {
           if (since >= MOVE_KEY_GUARD) skip();
           break;
         case "KeyA":
-          if (since >= MOVE_KEY_GUARD) autoBtn.click();
+          if (since >= MOVE_KEY_GUARD) autoCtl.toggle();
           break;
       }
     };

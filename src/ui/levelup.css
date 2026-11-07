@@ -437,6 +437,33 @@
   color: var(--txt-yellow);
 }
 
+/* keyboard hints (desktop only, like the cards' number keys) */
+.lu-key {
+  position: absolute;
+  right: 0.5em;
+  bottom: 0.18em;
+  display: none;
+  font-size: 0.58em;
+  line-height: 1;
+  opacity: 0.45;
+  text-shadow: none;
+  pointer-events: none;
+}
+
+.lu-auto .lu-key {
+  right: auto;
+  left: 50%;
+  bottom: -1.25em;
+  transform: translateX(-50%);
+  color: #cfc2f5;
+}
+
+@media (pointer: fine) {
+  .lu-key {
+    display: block;
+  }
+}
+
 /* ------------------------------------------------------- chest auto-close */
 .chest-ok.counting {
   overflow: hidden;
