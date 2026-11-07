@@ -1375,31 +1375,34 @@ export class Screens {
 
     // meta progression: curse record, unlocks, missions completed this run
     if (summary) {
-      const items: { icon: string; text: string; small?: string; color: string }[] = [];
-      if (victory && summary.newBestCurse) {
-        items.push(
-          curse > 0
-            ? { icon: uiIcon("curse", 64), text: `ผ่านคำสาปสูงสุดใหม่: ${curseName(curse)}!`, small: stage.name, color: curseColor(curse) }
-            : { icon: uiIcon("trophy", 64), text: `ชนะด่าน "${stage.name}" ครั้งแรก!`, color: "#ffd23f" },
-        );
-      }
-      if (summary.unlockedCurse > 0) {
-        items.push({ icon: uiIcon("curse", 64), text: `ปลดล็อก${curseName(summary.unlockedCurse)}!`, small: "เลือกได้ที่เมนูก่อนเริ่มเกม • ทองมากขึ้น", color: curseColor(summary.unlockedCurse) });
-      }
-      for (const id of summary.newStages) {
-        const st = stageDef(id);
-        if (st) items.push({ icon: stageIcon(st.id, st.color, Math.max(0, STAGES.indexOf(st)), 96), text: `ปลดล็อกด่านใหม่: ${st.name}!`, color: st.color });
-      }
-      if (!summary.newBestCurse && summary.newBestTime && runs > 1) {
-        items.push({ icon: uiIcon("hourglass", 64), text: `รอดนานที่สุดในด่านนี้!`, small: stage.name, color: "#3de0ff" });
-      }
+      // most exciting first: new hero / weapon, new stage, curse record, then plain missions
+      type Item = { icon: string; text: string; small?: string; color: string; p: number };
+      const items: Item[] = [];
       for (const m of summary.missions) {
         const w = m.weapon ? weaponById(m.weapon) : undefined;
         const h = m.hero ? HEROES.find((x) => x.id === m.hero) : undefined;
-        if (w) items.push({ icon: iconURL("w:" + w.id, w.icon), text: `ปลดล็อกอาวุธ: ${w.name}!`, small: `ภารกิจ "${m.name}"`, color: "#8dff5a" });
-        else if (h) items.push({ icon: iconURL("hero:" + h.id, h.portrait, 128), text: `ปลดล็อกฮีโร่: ${h.name}!`, small: `ภารกิจ "${m.name}"`, color: "#8dff5a" });
-        else items.push({ icon: uiIcon("scroll", 64), text: `${m.daily ? "ภารกิจประจำวัน" : "ภารกิจ"}สำเร็จ: ${m.name}`, small: "รับรางวัลที่เมนูภารกิจ", color: m.daily ? "#5ff0d0" : "#ffd23f" });
+        if (h) items.push({ icon: iconURL("hero:" + h.id, h.portrait, 128), text: `ปลดล็อกฮีโร่: ${h.name}!`, small: `ภารกิจ "${m.name}"`, color: "#8dff5a", p: 0 });
+        else if (w) items.push({ icon: iconURL("w:" + w.id, w.icon), text: `ปลดล็อกอาวุธ: ${w.name}!`, small: `ภารกิจ "${m.name}"`, color: "#8dff5a", p: 1 });
+        else items.push({ icon: uiIcon("scroll", 64), text: `${m.daily ? "ภารกิจประจำวัน" : "ภารกิจ"}สำเร็จ: ${m.name}`, small: "รับรางวัลที่เมนูภารกิจ", color: m.daily ? "#5ff0d0" : "#ffd23f", p: 6 });
       }
+      for (const id of summary.newStages) {
+        const st = stageDef(id);
+        if (st) items.push({ icon: stageIcon(st.id, st.color, Math.max(0, STAGES.indexOf(st)), 96), text: `ปลดล็อกด่านใหม่: ${st.name}!`, color: st.color, p: 2 });
+      }
+      if (victory && summary.newBestCurse) {
+        items.push(
+          curse > 0
+            ? { icon: uiIcon("curse", 64), text: `ผ่านคำสาปสูงสุดใหม่: ${curseName(curse)}!`, small: stage.name, color: curseColor(curse), p: 3 }
+            : { icon: uiIcon("trophy", 64), text: `ชนะด่าน "${stage.name}" ครั้งแรก!`, color: "#ffd23f", p: 3 },
+        );
+      }
+      if (summary.unlockedCurse > 0) {
+        items.push({ icon: uiIcon("curse", 64), text: `ปลดล็อก${curseName(summary.unlockedCurse)}!`, small: "เลือกได้ที่เมนูก่อนเริ่มเกม • ทองมากขึ้น", color: curseColor(summary.unlockedCurse), p: 4 });
+      }
+      if (!summary.newBestCurse && summary.newBestTime && runs > 1) {
+        items.push({ icon: uiIcon("hourglass", 64), text: `รอดนานที่สุดในด่านนี้!`, small: stage.name, color: "#3de0ff", p: 5 });
+      }
+      items.sort((a, b) => a.p - b.p);
       if (items.length) {
         panel.classList.add("has-unl");
         const box = el("div", "res-unlocks", panel);
