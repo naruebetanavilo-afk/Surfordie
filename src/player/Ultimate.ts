@@ -32,6 +32,17 @@ const TRICKLE_S = 150;
 const BOSS_BONUS = 0.3;
 const START_CHARGE = 0.2;
 
+/**
+ * Per-run difficulty modifier (`G.mods`, difficulty tiers / stages) when the
+ * build has it, else 1: tougher enemies (hp) scale the ultimate's damage, a
+ * denser crowd (density) raises the meter cost so the cadence stays the same.
+ */
+function runMod(key: "hp" | "density"): number {
+  const m = (G as unknown as { mods?: Partial<Record<string, number>> }).mods;
+  const v = m ? m[key] : undefined;
+  return typeof v === "number" && v > 0 ? v : 1;
+}
+
 /** autoplay bot: wait this long after the meter fills before casting */
 const BOT_DELAY = 0.6;
 
@@ -81,7 +92,7 @@ export class Ultimate {
   need(): number {
     const m = G.time / 60;
     const base = Math.max(NEED_BASE * (1 + m * NEED_LIN + m * m * NEED_QUAD), this.rate * FLOOR_S);
-    return base * (1 + NEED_PER_CAST * Math.min(this.casts, 6));
+    return base * runMod("density") * (1 + NEED_PER_CAST * Math.min(this.casts, 6));
   }
 
   /** rolling xp-weighted kill rate (per second) */
@@ -153,7 +164,7 @@ export class Ultimate {
     this.stat.castAt.push(+G.time.toFixed(1));
     const s = p.stats;
     const c = this.cast;
-    c.power = G.director.hpScale(G.time);
+    c.power = G.director.hpScale(G.time) * runMod("hp");
     c.area = 0.75 + 0.25 * s.area;
     c.amount = Math.max(0, s.amount);
     c.duration = 0.85 + 0.15 * s.duration;
