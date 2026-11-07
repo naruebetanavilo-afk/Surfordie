@@ -18,6 +18,7 @@ import type { UltimateDef } from "./ultimates/types";
 import { ultKnight } from "./ultimates/knight";
 import { ultMage } from "./ultimates/mage";
 import { ultRanger } from "./ultimates/ranger";
+import { ultChef } from "./ultimates/chef";
 
 /** how the hero's arm animates when its starting weapon fires */
 export type AttackStyle = "swing" | "cast" | "throw";
@@ -36,6 +37,11 @@ export interface HeroDef {
   bonus: Partial<PlayerStats>;
   /** gold price in the menu (0 = unlocked) */
   price: number;
+  /**
+   * id of the mission (src/meta/missions.ts) whose reward unlocks this hero;
+   * undefined = no mission needed. Unlocked heroes are in Meta.data.unlocked.
+   */
+  unlock?: string;
   /** accent colour for UI */
   color: string;
   /** attack gesture played when the starting weapon fires (visual only) */
@@ -464,6 +470,134 @@ function buildRanger(): THREE.Group {
 }
 
 // ---------------------------------------------------------------------------
+// เชฟกระทะไฟ — flaming-wok street chef
+// ---------------------------------------------------------------------------
+
+function buildChef(): THREE.Group {
+  const k = new ModelKit();
+  const coat = "#fbf6ec";
+  const coatShade = "#e3dccd";
+  const red = "#e8402f";
+  const redDark = "#b52a1f";
+  const skin = "#f2c29b";
+  const steel = "#3d424d";
+  const wood = "#8a5a2b";
+
+  // legs: checked-pattern trousers read as dark slate from the high camera; black clogs
+  for (const s of [-1, 1]) {
+    const bone = s < 0 ? B.legL : B.legR;
+    const x = 0.12 * s;
+    k.add(place(cyl(0.085, 0.08, 0.24, 10), x, 0.24, 0), "#3c3a52", { bone });
+    k.add(place(sph(0.088, 10, 8), x, 0.06, 0.04, 0, 0, 0, 1, 0.62, 1.45), "#24202e", { bone });
+  }
+
+  // round belly in a white double-breasted coat, red apron, neckerchief
+  k.add(place(sph(0.29, 16, 12), 0, 0.55, 0, 0, 0, 0, 1.06, 1.0, 0.96), coat, { bone: B.body, shadeBottom: 0.78 });
+  k.add(place(cyl(0.255, 0.3, 0.16, 16), 0, 0.37, 0), coatShade, { bone: B.body });
+  for (const [x, y] of [
+    [-0.08, 0.66],
+    [0.08, 0.66],
+    [-0.09, 0.55],
+    [0.09, 0.55],
+  ] as const) {
+    const z = Math.sqrt(Math.max(0, 0.29 * 0.29 * 0.92 - x * x - (y - 0.55) * (y - 0.55))) - 0.005;
+    k.add(place(sph(0.026, 6, 4), x, y, z), "#d9a13a", { bone: B.body, outline: false, glow: 0.15 });
+  }
+  // apron: bib + skirt (front only), ties around the waist
+  k.add(place(box(0.24, 0.16, 0.04), 0, 0.6, 0.265, -0.2), red, { bone: B.body, shadeBottom: 0.85 });
+  k.add(place(box(0.42, 0.3, 0.04), 0, 0.38, 0.27, 0.12), red, { bone: B.body, shadeBottom: 0.75 });
+  k.add(place(torus(0.29, 0.024, 6, 18), 0, 0.47, 0, Math.PI / 2), redDark, { bone: B.body });
+  k.add(place(box(0.13, 0.08, 0.035), 0.06, 0.33, 0.295, 0.12), "#ffc94a", { bone: B.body, outline: false });
+  // neckerchief + knot; its tails flutter on the cape bones
+  k.add(place(torus(0.16, 0.05, 6, 14), 0, 0.8, 0, Math.PI / 2), red, { bone: B.body });
+  k.add(place(sph(0.055, 8, 6), 0.0, 0.76, 0.16), red, { bone: B.body });
+  k.add(place(box(0.1, 0.24, 0.035), -0.06, 0.64, -0.25, 0.08, 0, -0.1), red, { bone: B.cape });
+  k.add(place(box(0.1, 0.2, 0.035), -0.07, 0.42, -0.27, 0, 0, -0.15), redDark, { bone: B.capeTip });
+
+  // arms: rolled sleeves, cuffs, hands
+  for (const s of [-1, 1]) {
+    const bone = s < 0 ? B.armL : B.armR;
+    const x = 0.31 * s;
+    k.add(place(sph(0.11, 10, 8), x, 0.72, 0, 0, 0, 0, 1, 0.85, 1), coat, { bone });
+    k.add(place(cyl(0.07, 0.066, 0.2, 8), x, 0.6, 0), coat, { bone });
+    k.add(place(torus(0.068, 0.026, 5, 12), x, 0.5, 0, Math.PI / 2), coatShade, { bone });
+    k.add(place(sph(0.07, 10, 8), x, 0.43, 0.01), skin, { bone });
+  }
+
+  // head: face, curly moustache, sideburns, puffy toque (the puff wobbles on hatTip)
+  const hy = 1.08;
+  k.add(place(sph(0.3, 18, 14), 0, hy, 0), skin, { bone: B.head });
+  addFace(k, hy, 0.3, { eyeY: 1.06, eyeX: 0.115, brows: "#4a2a17", mouth: "#8a2d2d" });
+  const hair = "#4a2a17";
+  for (const s of [-1, 1]) {
+    k.add(place(sph(0.085, 10, 8), 0.27 * s, 1.04, -0.03, 0, 0, 0, 0.7, 1.2, 1), hair, { bone: B.head });
+    // moustache: a fat curl each side of the nose
+    const z = Math.sqrt(Math.max(0, 0.3 * 0.3 - (0.07 * 0.07) - (0.985 - hy) * (0.985 - hy))) + 0.005;
+    k.add(place(sph(0.06, 10, 8), 0.07 * s, 0.985, z, 0, 0, 0.35 * s, 1.5, 0.75, 0.7), hair, { bone: B.head });
+    k.add(place(sph(0.032, 8, 6), 0.15 * s, 1.005, z - 0.035), hair, { bone: B.head });
+  }
+  const tilt = -0.25;
+  k.add(place(cyl(0.255, 0.27, 0.17, 18), 0, 1.31, -0.04, tilt), coat, { bone: B.head, shadeBottom: 0.86 });
+  k.add(place(torus(0.262, 0.022, 5, 20), 0, 1.24, -0.02, Math.PI / 2 + tilt), coatShade, { bone: B.head });
+  const puff: [number, number, number, number][] = [
+    [0, 1.56, -0.13, 0.2],
+    [-0.15, 1.5, -0.1, 0.15],
+    [0.15, 1.5, -0.1, 0.15],
+    [0, 1.5, 0.03, 0.15],
+    [0, 1.48, -0.25, 0.15],
+  ];
+  for (const [x, y, z, r] of puff) k.add(place(sph(r, 12, 10), x, y, z), coat, { bone: B.hatTip, shadeBottom: 0.88 });
+
+  // flaming wok in the right hand: long handle, round steel bowl, fire inside
+  const wx = 0.31;
+  const wy = 0.43;
+  k.add(place(cyl(0.022, 0.026, 0.34, 6), wx, wy, 0.15, Math.PI / 2), wood, { bone: B.weapon });
+  // closed shapes only (the high camera looks into the wok): tapered body, dark inner disc, rim
+  k.add(place(cyl(0.24, 0.12, 0.1, 16), wx, wy + 0.1, 0.5), steel, { bone: B.weapon, shadeBottom: 0.6 });
+  k.add(place(cyl(0.215, 0.215, 0.012, 16), wx, wy + 0.15, 0.5), "#1f2228", { bone: B.weapon, outline: false });
+  k.add(place(torus(0.235, 0.02, 5, 20), wx, wy + 0.15, 0.5, Math.PI / 2), "#6c7280", { bone: B.weapon });
+  const flames: [number, number, number, string][] = [
+    [0, 0.13, 0.17, "#ff6a1f"],
+    [-0.08, 0.1, 0.12, "#ff9a1f"],
+    [0.08, 0.11, 0.13, "#ff9a1f"],
+    [0.0, 0.09, 0.09, "#ffe066"],
+  ];
+  for (const [dx, h, r, c] of flames) {
+    k.add(place(cone(r * 0.6, h * 1.6, 7), wx + dx, wy + 0.13 + h * 0.6, 0.5 + dx * 0.4), c, {
+      bone: B.weapon,
+      glow: 1,
+      outline: false,
+    });
+  }
+  // a couple of chillies tossing in the wok
+  k.add(place(cone(0.03, 0.12, 6), wx - 0.06, wy + 0.2, 0.46, 0.4, 0, 1.2), "#ff2e2e", { bone: B.weapon, glow: 0.3 });
+  k.add(place(cone(0.03, 0.12, 6), wx + 0.07, wy + 0.22, 0.55, -0.5, 0, -1.0), "#ff2e2e", { bone: B.weapon, glow: 0.3 });
+
+  // spatula in the left hand
+  const sx = -0.31;
+  k.add(place(cyl(0.018, 0.018, 0.3, 6), sx, wy - 0.02, 0.13, Math.PI / 2 + 0.35), wood, { bone: B.armL });
+  k.add(place(box(0.13, 0.02, 0.12), sx, wy - 0.1, 0.32, 0.35), "#c9d1dc", { bone: B.armL });
+
+  return finishRig(k, boneSpecs([0, 1.38, -0.08]), (bones) => {
+    // warm additive glow over the wok fire; Player pulses "orbGlow"
+    const mat = new THREE.SpriteMaterial({
+      map: glowTexture(),
+      color: "#ff8a2a",
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.8,
+    });
+    const halo = new THREE.Sprite(mat);
+    halo.name = "orbGlow";
+    halo.scale.setScalar(0.62);
+    // weapon bone sits at the hand: the bowl is ~0.5 forward, fire ~0.3 up
+    halo.position.set(0, 0.32, 0.48);
+    bones[B.weapon].add(halo);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // portraits (2D canvas)
 // ---------------------------------------------------------------------------
 
@@ -610,6 +744,66 @@ const rangerPortrait: IconDraw = (c, s) => {
   c.restore();
 };
 
+const chefPortrait: IconDraw = (c, s) => {
+  iconBg(c, s, "#f2552c");
+  c.save();
+  c.lineJoin = "round";
+  // coat collar + red neckerchief
+  blob(c, s, "#fbf6ec", () => c.ellipse(s * 0.5, s * 1.0, s * 0.38, s * 0.22, 0, Math.PI, 0));
+  blob(c, s, "#e8402f", () => {
+    c.moveTo(s * 0.34, s * 0.82);
+    c.quadraticCurveTo(s * 0.5, s * 0.9, s * 0.66, s * 0.82);
+    c.lineTo(s * 0.56, s * 0.97);
+    c.lineTo(s * 0.44, s * 0.97);
+    c.closePath();
+  }, 0.035);
+  // sideburns + face
+  blob(c, s, "#4a2a17", () => c.ellipse(s * 0.5, s * 0.62, s * 0.27, s * 0.2, 0, 0, Math.PI * 2));
+  blob(c, s, "#f2c29b", () => c.arc(s * 0.5, s * 0.63, s * 0.23, 0, Math.PI * 2));
+  eyes(c, s, s * 0.5, s * 0.6, s * 0.09, s * 0.042);
+  // curly moustache over the smile
+  for (const sx of [-1, 1]) {
+    blob(c, s, "#4a2a17", () => {
+      c.ellipse(s * (0.5 + 0.065 * sx), s * 0.72, s * 0.07, s * 0.035, 0.25 * sx, 0, Math.PI * 2);
+    }, 0.025);
+    blob(c, s, "#4a2a17", () => c.arc(s * (0.5 + 0.14 * sx), s * 0.7, s * 0.025, 0, Math.PI * 2), 0.02);
+  }
+  // toque: band + three puffs
+  blob(c, s, "#fbf6ec", () => {
+    c.moveTo(s * 0.3, s * 0.47);
+    c.lineTo(s * 0.32, s * 0.33);
+    c.lineTo(s * 0.68, s * 0.33);
+    c.lineTo(s * 0.7, s * 0.47);
+    c.closePath();
+  });
+  blob(c, s, "#fbf6ec", () => {
+    c.arc(s * 0.34, s * 0.27, s * 0.11, 0, Math.PI * 2);
+  });
+  blob(c, s, "#fbf6ec", () => {
+    c.arc(s * 0.66, s * 0.27, s * 0.11, 0, Math.PI * 2);
+  });
+  blob(c, s, "#fbf6ec", () => {
+    c.arc(s * 0.5, s * 0.2, s * 0.14, 0, Math.PI * 2);
+  });
+  c.fillStyle = "#fbf6ec";
+  c.fillRect(s * 0.33, s * 0.3, s * 0.34, s * 0.12);
+  c.strokeStyle = "rgba(22,13,36,0.35)";
+  c.lineWidth = s * 0.02;
+  c.beginPath();
+  c.moveTo(s * 0.31, s * 0.43);
+  c.lineTo(s * 0.69, s * 0.43);
+  c.stroke();
+  // flame sparkle (the wok fire)
+  c.fillStyle = "#ffd23f";
+  c.beginPath();
+  c.moveTo(s * 0.86, s * 0.6);
+  c.quadraticCurveTo(s * 0.74, s * 0.52, s * 0.84, s * 0.38);
+  c.quadraticCurveTo(s * 0.86, s * 0.48, s * 0.92, s * 0.46);
+  c.quadraticCurveTo(s * 0.96, s * 0.56, s * 0.86, s * 0.6);
+  c.fill();
+  c.restore();
+};
+
 export const HEROES: HeroDef[] = [
   {
     id: "knight",
@@ -652,6 +846,20 @@ export const HEROES: HeroDef[] = [
     build: buildRanger,
     portrait: rangerPortrait,
     ultimate: ultRanger,
+  },
+  {
+    id: "chef",
+    name: "เชฟกระทะไฟ",
+    title: "ร้อนแรง ฟื้นไว",
+    desc: "เริ่มด้วยวงเพลิงนรก • ฟื้นฟู +0.5/วิ • พลังชีวิต +10%",
+    startWeapon: "aura",
+    bonus: { regen: 0.5, maxHp: 10 },
+    price: 0,
+    unlock: "a_win1",
+    color: "#f2552c",
+    build: buildChef,
+    portrait: chefPortrait,
+    ultimate: ultChef,
   },
 ];
 

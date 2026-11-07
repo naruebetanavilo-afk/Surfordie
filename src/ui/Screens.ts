@@ -14,23 +14,17 @@ import { recommend } from "../weapons/recommend";
 import { luIcon, luShopIcon, type LevelUpGlyph } from "./levelupIcons";
 import { AutoChip } from "./autoChip";
 import type { RunSummary } from "../core/Game";
+import { el, img, btn, setLabel, pulse } from "./dom";
+import { MetaScreens, heroLocked, progressText, type ScreenCtx } from "./metaScreens";
+import { RunSetupPanel } from "./runSetupUi";
+import { MissionToast } from "./missionToast";
+import { Missions, unlockSource } from "../meta/missions";
+import { stageDef, syncMenuStage } from "../meta/runSetup";
+import { curseColor, curseName, curseMods } from "../meta/curse";
+import { stageIcon } from "./icons";
+import { STAGES } from "../stages/stages";
 import "./levelup.css";
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, parent?: HTMLElement, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  if (parent) parent.appendChild(e);
-  return e;
-}
-
-function img(cls: string, parent: HTMLElement, src: string): HTMLImageElement {
-  const i = el("img", cls, parent);
-  i.alt = "";
-  i.draggable = false;
-  i.src = src;
-  return i;
-}
+import "./meta.css";
 
 /** icon inside a frame with a spinning accent glow (badge can sit outside the frame) */
 function framedIcon(parent: HTMLElement, cls: string, src: string): HTMLDivElement {
@@ -39,27 +33,6 @@ function framedIcon(parent: HTMLElement, cls: string, src: string): HTMLDivEleme
   el("i", "icon-spin", frame);
   img("", frame, src);
   return box;
-}
-
-/** button with an optional glyph and a label span */
-function btn(parent: HTMLElement, cls: string, label: string, icon?: UiIconName): HTMLButtonElement {
-  const b = el("button", "btn " + cls, parent);
-  b.type = "button";
-  if (icon) img("btn-ico", b, uiIcon(icon, 64));
-  el("span", "btn-label", b, label);
-  return b;
-}
-
-function setLabel(b: HTMLButtonElement, text: string): void {
-  const l = b.querySelector(".btn-label");
-  if (l) l.textContent = text;
-}
-
-/** retrigger a one-shot CSS animation class */
-function pulse(e: HTMLElement, cls: string): void {
-  e.classList.remove(cls);
-  void e.offsetWidth;
-  e.classList.add(cls);
 }
 
 const QUALITY_NAMES = { low: "ต่ำ", medium: "กลาง", high: "สูง" } as const;
@@ -91,11 +64,27 @@ export class Screens {
   private prev = { time: 0, kills: 0, level: 0 };
   /** in-play AUTO mode chip (under the HUD's pause button) */
   private autoChip: AutoChip;
+  /** in-play "ภารกิจสำเร็จ!" banner */
+  private missionToast: MissionToast;
+  /** stage picker, missions and codex screens */
+  private meta: MetaScreens;
+  private lastUpdate = performance.now();
 
   constructor(private ui: HTMLElement) {
     this.layer = el("div", "screens", ui);
     // below the modal layer: level-up / chest / pause screens cover it like the HUD
     this.autoChip = new AutoChip(ui, this.layer);
+    this.missionToast = new MissionToast(ui, this.layer);
+    const ctx: ScreenCtx = {
+      open: (cls) => this.open(cls),
+      head: (parent, title, onBack) => this.head(parent, title, onBack),
+      bankChip: (parent) => this.bankChip(parent),
+      later: (ms, fn) => this.later(ms, fn),
+      setKey: (fn) => {
+        this.onKey = fn;
+      },
+    };
+    this.meta = new MetaScreens(ctx);
     // persisted settings that live in Meta (quality is persisted by World)
     if (Meta.data.showFps) G.debug.showFps = true;
     window.addEventListener("keydown", (e) => {
@@ -137,9 +126,13 @@ export class Screens {
     this.timers.push(window.setTimeout(fn, ms));
   }
 
-  /** per-frame UI that lives outside the modals (AUTO chip). Called by Game every frame. */
+  /** per-frame UI that lives outside the modals (AUTO chip, mission toast). Called by Game every frame. */
   update(): void {
+    const now = performance.now();
+    const dt = Math.min(0.1, Math.max(0, (now - this.lastUpdate) / 1000));
+    this.lastUpdate = now;
     this.autoChip.update();
+    this.missionToast.update(dt);
   }
 
   /**
@@ -216,7 +209,11 @@ export class Screens {
       // Player.reset grants spawn invulnerability, which only ticks down in
       // update(); in the menu that would leave the hero blinking forever
       G.player.invuln = 0;
+      // the menu background follows the selected stage (World reads G.stageId)
+      syncMenuStage();
     }
+    // the date may have rolled over / an old save may already meet some goals
+    Missions.check();
 
     const top = el("div", "menu-top", s);
     const rec = el("div", "record-chip", top);
@@ -229,7 +226,16 @@ export class Screens {
       el("b", "", recTxt, "--:--");
       el("small", "", recTxt, "ยังไม่มีสถิติ");
     }
-    const bankVal = this.bankChip(top);
+    const topR = el("div", "menu-top-r", top);
+    const bankVal = this.bankChip(topR);
+    const gear = el("button", "btn icon-btn menu-gear", topR);
+    gear.type = "button";
+    gear.setAttribute("aria-label", "ตั้งค่า");
+    img("btn-ico", gear, uiIcon("gear", 64));
+    onTap(gear, () => {
+      G.audio.sfx("select");
+      this.showSettings(() => this.showMenu());
+    });
 
     const logo = el("div", "logo", s);
     const h1 = el("h1", "logo-title", logo);
@@ -245,7 +251,7 @@ export class Screens {
     const bottom = el("div", "menu-bottom", s);
     const pickBox = el("div", "hero-pick", bottom);
     el("div", "section-label", pickBox, "เลือกฮีโร่");
-    const list = el("div", "hero-list", pickBox);
+    const list = el("div", "hero-list" + (HEROES.length > 3 ? " n4" : ""), pickBox);
     const detail = el("div", "hero-detail", pickBox);
     const detailIco = el("img", "hero-detail-ico", detail);
     detailIco.alt = "";
@@ -256,10 +262,14 @@ export class Screens {
     ultIco.alt = "";
     const ultTxt = el("span", "", ultRow);
     const actions = el("div", "menu-actions", bottom);
+    // run setup: stage (opens the picker) + curse tier stepper; "เริ่มเกม" stays one tap away
+    new RunSetupPanel(actions, () => this.meta.showStages(() => this.showMenu()), (ms, fn) => this.later(ms, fn));
     const play = btn(actions, "primary big play-btn", "เริ่มเกม", "play");
     const cards = new Map<string, HTMLButtonElement>();
 
-    const locked = (h: HeroDef) => h.price > 0 && !Meta.isUnlocked(h.id);
+    const locked = (h: HeroDef) => heroLocked(h);
+    /** locked behind a mission rather than a price */
+    const missionLocked = (h: HeroDef) => locked(h) && !!h.unlock;
     const refreshPlay = () => {
       const h = HEROES.find((x) => x.id === this.selectedHero) ?? HEROES[0];
       detail.style.setProperty("--accent", h.color);
@@ -267,18 +277,30 @@ export class Screens {
       if (wd) detailIco.src = iconURL("w:" + wd.id, wd.icon);
       detailIco.style.display = wd ? "" : "none";
       detailTxt.textContent = h.desc;
+      detail.classList.toggle("req", missionLocked(h));
+      if (missionLocked(h)) {
+        const m = unlockSource("hero", h.id);
+        detailIco.src = uiIcon("lock", 64);
+        detailIco.style.display = "";
+        detailTxt.textContent = "";
+        el("b", "", detailTxt, m ? `ปลดล็อก: ภารกิจ "${m.name}"` : "ยังล็อกอยู่");
+        if (m) el("small", "", detailTxt, `${m.desc} (${progressText(m, Missions.progress(m, false))})`);
+      }
       const u = h.ultimate;
       ultRow.style.setProperty("--accent", u.color);
       ultIco.src = iconURL("ult:" + u.id, u.icon, 96);
       ultTxt.innerHTML = "";
       el("b", "", ultTxt, `ไม้ตาย: ${u.name}`);
       el("small", "", ultTxt, u.desc);
-      if (locked(h)) {
+      play.classList.remove("unlock", "disabled", "locked-hero");
+      if (missionLocked(h)) {
+        play.classList.add("disabled", "locked-hero");
+        setLabel(play, "ยังล็อกอยู่");
+      } else if (locked(h)) {
         play.classList.add("unlock");
         setLabel(play, `ปลดล็อก ${formatNum(h.price)}`);
         play.classList.toggle("disabled", Meta.data.gold < h.price);
       } else {
-        play.classList.remove("unlock", "disabled");
         setLabel(play, "เริ่มเกม");
       }
     };
@@ -322,6 +344,12 @@ export class Screens {
 
     onTap(play, () => {
       const h = HEROES.find((x) => x.id === this.selectedHero) ?? HEROES[0];
+      if (missionLocked(h)) {
+        G.audio.sfx("deny");
+        pulse(play, "shake");
+        pulse(detail, "swap");
+        return;
+      }
       if (locked(h)) {
         if (Meta.unlockHero(h.id, h.price)) {
           G.audio.sfx("coin");
@@ -343,14 +371,27 @@ export class Screens {
       Flow.startRun(h.id);
     });
 
-    const row = el("div", "menu-row", actions);
+    const row = el("div", "menu-row three", actions);
     onTap(btn(row, "violet", "ร้านค้า", "bag"), () => {
       G.audio.sfx("select");
       this.showShop();
     });
-    onTap(btn(row, "ghost", "ตั้งค่า", "gear"), () => {
+    const msBtn = btn(row, "teal", "ภารกิจ", "scroll");
+    const claimable = Missions.claimable();
+    if (claimable > 0) {
+      const badge = el("span", "menu-badge", msBtn, String(claimable));
+      badge.setAttribute("aria-label", `รับรางวัลได้ ${claimable} รายการ`);
+    }
+    onTap(msBtn, () => {
       G.audio.sfx("select");
-      this.showSettings(() => this.showMenu());
+      this.meta.showMissions(
+        () => this.showMenu(),
+        () => {},
+      );
+    });
+    onTap(btn(row, "ghost", "สมุดภาพ", "book"), () => {
+      G.audio.sfx("select");
+      this.meta.showCodex(() => this.showMenu());
     });
 
     this.onKey = (e) => {
