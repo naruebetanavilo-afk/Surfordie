@@ -909,7 +909,7 @@
 
 .cx-name {
   max-width: 100%;
-  font-size: 0.7em;
+  font-size: 0.6em;
   /* tall enough for stacked Thai marks (ื + ่); the negative margin keeps the tile height */
   line-height: 1.5;
   margin-block: -0.175em;
@@ -1025,8 +1025,9 @@
 /* ------------------------------------------------------------ in-run mission toast */
 .ms-toasts {
   position: absolute;
-  /* below the weapon / passive slot rows and the first boss bar */
-  top: calc(var(--safe-top) + 13em);
+  /* below the weapon / passive slot rows and the first boss bar (in this
+     element's own em: its font is a little smaller than the HUD's) */
+  top: calc(var(--safe-top) + 15em);
   left: 50%;
   width: min(86vw, 20em);
   margin-left: max(-43vw, -10em);

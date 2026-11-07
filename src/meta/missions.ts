@@ -208,6 +208,8 @@ class MissionTracker {
   private hooked = false;
   /** a run is in progress and its numbers are not merged into Meta yet */
   private active = false;
+  /** daily key the current run started on (0 = none): its numbers count toward that day */
+  private runDay = 0;
   /** per-run event counters (the rest comes from G.stats / G.player) */
   readonly run = { elites: 0, ults: 0, evos: 0, chests: 0 };
   /** missions completed during the current / last run (results screen) */
@@ -220,7 +222,8 @@ class MissionTracker {
     this.hooked = true;
     const ev = G.events;
     ev.on("runStart", () => {
-      this.rollDay();
+      this.runDay = 0;
+      this.runDay = this.rollDay();
       this.active = true;
       this.run.elites = this.run.ults = this.run.evos = this.run.chests = 0;
       this.runDone.length = 0;
@@ -325,8 +328,9 @@ class MissionTracker {
   /** reset the daily progress when the local date changed; returns today's key */
   rollDay(): number {
     const d = Meta.data;
-    // a run that crosses midnight stays on the day it started (merge() rolls after it)
-    if (this.active && d.dailyDay) return d.dailyDay;
+    // a run that crosses midnight stays on the day it started; the run end
+    // merges into that day first and only then rolls (see finishRun)
+    if (this.runDay) return this.runDay;
     const day = todayKey();
     if (d.dailyDay !== day) {
       // completed but unclaimed dailies of the old day are paid out, not lost
@@ -451,7 +455,15 @@ class MissionTracker {
       this.merge(victory, true);
     }
     this.check();
+    this.finishRun();
     return this.runDone.slice();
+  }
+
+  /** the run's numbers are in its own day: now roll to today (pays a finished old day) */
+  private finishRun(): void {
+    if (!this.runDay) return;
+    this.runDay = 0;
+    this.rollDay();
   }
 
   /**
@@ -464,6 +476,7 @@ class MissionTracker {
     Meta.data.totalKills += G.stats.kills;
     this.merge(false, false);
     this.check();
+    this.finishRun();
     Meta.save();
   }
 }

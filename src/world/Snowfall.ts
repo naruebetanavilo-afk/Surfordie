@@ -32,7 +32,7 @@ void main() {
     return;
   }
   float sp = 0.7 + aRand.x * 0.6;
-  vec3 p = position;
+  vec3 p = position * uBox;
   p.y = mod(p.y - uFall * sp, uBox.y);
   float ph = aRand.y * 37.0 + aRand.x * 11.0;
   vec2 sway = vec2(sin(uTime * 0.9 + ph), cos(uTime * 0.7 + ph * 1.3)) * 0.35;
@@ -78,9 +78,10 @@ export class Snowfall {
     const rnd = new Float32Array(n * 2);
     for (let i = 0; i < n; i++) {
       // cosmetic: Math.random is fine (no gameplay effect)
-      pos[i * 3] = Math.random() * 64;
-      pos[i * 3 + 1] = Math.random() * 64;
-      pos[i * 3 + 2] = Math.random() * 64;
+      // unit cube, scaled by the wrap box in the shader: uniform density for any box size
+      pos[i * 3] = Math.random();
+      pos[i * 3 + 1] = Math.random();
+      pos[i * 3 + 2] = Math.random();
       rnd[i * 2] = Math.random();
       rnd[i * 2 + 1] = Math.random();
     }
@@ -136,20 +137,22 @@ export class Snowfall {
     u.uFall.value = this.fall;
     u.uWind.value.set(this.windX, this.windZ);
     u.uTime.value = time;
-    // (the wrap box has 20 % headroom per axis, so a few more flakes are shown)
-    u.uDensity.value = 0.55 + storm * 0.45;
+    // (the wrap box has 30 % headroom per axis, so more of the flakes are shown)
+    u.uDensity.value = 0.6 + storm * 0.4;
     u.uSize.value = 0.2 + storm * 0.04;
     u.uAlpha.value = 0.85 + storm * 0.1;
     // the far (-z) side of the view is larger: shift the box up-screen
     u.uCenter.value.set(cx, 0, cz - halfH * 0.12);
     // the wrap box must stay put while the camera zooms (boss zoom, crowd zoom,
     // menu blend): a changing box would shift every flake by a different amount.
-    // It only grows (with headroom) or shrinks after a big resize.
+    // It only grows (with headroom) or shrinks after a big resize; flakes are
+    // stored in a unit cube, so a resize re-lays them out evenly.
     const needX = halfW * 2 + 6;
     const needZ = halfH * 1.9 + 6;
     if (needX > this.boxX || needZ > this.boxZ || needX < this.boxX * 0.55) {
-      this.boxX = needX * 1.2;
-      this.boxZ = needZ * 1.2;
+      // 30 % headroom covers the largest in-run zoom (boss 1.12 x crowd 1.09)
+      this.boxX = needX * 1.3;
+      this.boxZ = needZ * 1.3;
       u.uBox.value.set(this.boxX, 9, this.boxZ);
     }
   }

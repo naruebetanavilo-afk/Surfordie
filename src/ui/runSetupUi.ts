@@ -1,7 +1,7 @@
 import { G } from "../core/G";
 import { STAGES } from "../stages/stages";
 import { CURSE_MAX, curseLines, curseColor, curseMods } from "../meta/curse";
-import { maxCurse, selectCurse, selectedCurse, selectedStage, stageUnlocked, syncMenuStage } from "../meta/runSetup";
+import { bestCurse, maxCurse, selectCurse, selectedCurse, selectedStage, stageUnlocked, syncMenuStage } from "../meta/runSetup";
 import { stageIcon, uiIcon } from "./icons";
 import { el, img, pulse, setText } from "./dom";
 import { onTap } from "./tap";
@@ -139,7 +139,7 @@ export class RunSetupPanel {
     this.plus.classList.toggle("off", t >= max);
     this.plus.classList.toggle("locked", t >= max && max < CURSE_MAX);
     // "+" glows only when the tier right above the selection is the newest one opened
-    this.plus.classList.toggle("new", t + 1 === max && max > 0);
+    this.plus.classList.toggle("new", t + 1 === max && max > bestCurse(stage.id));
     this.pips.forEach((p, k) => {
       const tier = k + 1;
       p.className = tier <= t ? "on" : tier <= max ? "open" : "";

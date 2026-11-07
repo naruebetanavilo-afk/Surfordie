@@ -931,9 +931,12 @@ export class Screens {
     const reroll = () => {
       if (ws.charges.reroll <= 0) return deny("reroll");
       const keys = cur.map(choiceKey);
-      const next = ws.rollChoices(choices.length, { avoid: keys });
-      // a pool too small to offer anything new keeps the charge
-      if (next.length === cur.length && next.every((c) => keys.includes(choiceKey(c)))) return deny("reroll");
+      const same = (n: Choice[]) => n.length === cur.length && n.every((c) => keys.includes(choiceKey(c)));
+      // `avoid` only down-weights, so retry a few times before deciding the pool
+      // is too small to offer anything new (then the charge is kept)
+      let next = ws.rollChoices(choices.length, { avoid: keys });
+      for (let k = 0; k < 8 && same(next); k++) next = ws.rollChoices(choices.length, { avoid: keys });
+      if (same(next)) return deny("reroll");
       ws.useCharge("reroll");
       if (banishing) setBanish(false);
       G.audio.sfx("whoosh");

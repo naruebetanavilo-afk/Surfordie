@@ -632,7 +632,8 @@
 /* up to three stacked bars: newest boss on top (full size), older ones compact */
 .hud-bosses {
   position: absolute;
-  top: calc(var(--safe-top) + 9.9em);
+  /* below the passive slot row and its level pips */
+  top: calc(var(--safe-top) + 10.8em);
   left: 50%;
   width: min(80vw, 24em);
   margin-left: max(-40vw, -12em);
