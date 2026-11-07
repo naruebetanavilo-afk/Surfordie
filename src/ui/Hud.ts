@@ -124,6 +124,10 @@ export class Hud {
   private ultIcon: HTMLImageElement;
   private ultLabel: HTMLSpanElement;
   private ultDenyFlip = false;
+  private ultTip: HTMLDivElement;
+  /** realTime when the tip hides (0 = hidden); shown once per run, first runs only */
+  private ultTipUntil = 0;
+  private ultTipDone = false;
   private cutIn: HTMLDivElement;
   private cutHero: HTMLImageElement;
   private cutName: HTMLElement;
@@ -255,6 +259,8 @@ export class Hud {
     this.ultIcon = img("ult-icon", core);
     this.ultLabel = el("span", "ult-label", this.ultBtn, "0%");
     el("span", "ult-key", this.ultBtn, "Space");
+    // first-runs tip bubble (sibling: it must not catch taps meant for the button)
+    this.ultTip = el("div", "ult-tip", this.root);
     // boss arrows stay clear of it too
     this.bandEls.push(this.ultBtn);
     // onTap: works as a second finger while the joystick thumb is held
@@ -366,6 +372,12 @@ export class Hud {
     this.ultBtn.setAttribute("aria-label", `ไม้ตาย: ${u.name}`);
     this.ultBtn.classList.remove("ready", "active", "denyA", "denyB");
     this.cutIn.classList.remove("show");
+    this.ultTip.classList.remove("show");
+    this.ultTipUntil = 0;
+    // only new players get the "tap here" bubble (first few runs)
+    this.ultTipDone = Meta.data.runs >= 3 || G.debug.autoplay;
+    const fine = window.matchMedia?.("(pointer: fine)").matches ?? false;
+    this.ultTip.textContent = fine ? "กด Space ปล่อยไม้ตาย!" : "แตะเพื่อปล่อยไม้ตาย!";
     for (const v of this.bossViews) this.bindBoss(v, -1, -1);
     this.bossMore.classList.add("hidden");
     this.bossScanT = 0;
@@ -699,6 +711,18 @@ export class Hud {
       if (state === 1) this.ultLabel.textContent = "ไม้ตาย!";
       else if (state === 2) this.ultLabel.textContent = "ปล่อย!";
       else this.last.ultPct = -1;
+      if (state === 1 && !this.ultTipDone) {
+        this.ultTipDone = true;
+        this.ultTipUntil = G.realTime + 7;
+        this.ultTip.classList.add("show");
+      } else if (state !== 1 && this.ultTipUntil > 0) {
+        this.ultTipUntil = 0;
+        this.ultTip.classList.remove("show");
+      }
+    }
+    if (this.ultTipUntil > 0 && G.realTime > this.ultTipUntil) {
+      this.ultTipUntil = 0;
+      this.ultTip.classList.remove("show");
     }
     // ring: charge while filling, remaining time while the effect plays
     const f = state === 2 ? 1 - u.activeFrac : Math.min(1, u.charge);

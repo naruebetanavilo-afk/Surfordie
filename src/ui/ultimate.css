@@ -374,3 +374,70 @@
 .hud-hint {
   padding: 0 calc(var(--safe-right) + 6.4em);
 }
+
+/* ------------------------------------------------- first-runs tip bubble */
+.ult-tip {
+  position: absolute;
+  right: calc(var(--safe-right) + 0.35em);
+  bottom: calc(var(--safe-bottom) + max(2.4em, 6.5vh) + 5.7em);
+  max-width: 60vw;
+  padding: 0.35em 0.8em 0.42em;
+  font-size: 0.95em;
+  line-height: 1.15;
+  text-align: center;
+  color: var(--ink);
+  border-radius: 0.8em;
+  background: linear-gradient(180deg, #fffbe0, var(--gold));
+  box-shadow: 0 0 0 0.14em var(--ink), 0 0.22em 0 0.14em var(--ink), 0 0 1em rgba(255, 210, 63, 0.6);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* arrow pointing down at the button */
+.ult-tip::after {
+  content: "";
+  position: absolute;
+  right: 1.85em;
+  bottom: -0.5em;
+  width: 0.9em;
+  height: 0.9em;
+  background: var(--gold);
+  box-shadow: 0.14em 0.14em 0 var(--ink);
+  transform: rotate(45deg);
+}
+
+.ult-tip.show {
+  visibility: visible;
+  animation: ultTipIn 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both, ultTipBob 1s 0.45s ease-in-out infinite;
+}
+
+@keyframes ultTipIn {
+  0% {
+    opacity: 0;
+    transform: translateY(0.8em) scale(0.6);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ultTipBob {
+  0%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-0.3em);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .ult-tip {
+    right: calc(var(--safe-right) + 0.6em);
+    bottom: calc(var(--safe-bottom) + 1.9em + 5.9em);
+  }
+}
