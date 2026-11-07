@@ -108,10 +108,17 @@ export const PHASES: Phase[] = [
 
 export type RunEvent =
   | { t: number; kind: "warn"; text: string; color: string }
-  | { t: number; kind: "boss"; id: string; announce?: string }
+  /** `hpMul` scales the boss HP (a boss reused earlier than its home stage), `announce` adds a banner */
+  | { t: number; kind: "boss"; id: string; announce?: string; hpMul?: number }
   | { t: number; kind: "ring"; ids: string[]; count: number; text: string; rings?: number }
   | { t: number; kind: "stampede"; ids: string[]; lanes: number; perLane: number; speed: number; sides?: number }
-  | { t: number; kind: "swarm"; id: string; groups: number; perGroup: number; text: string };
+  | { t: number; kind: "swarm"; id: string; groups: number; perGroup: number; text: string }
+  /**
+   * blizzard (stage "snow"): heavy snow + white haze for `duration` s, the wind
+   * pushes the hero gently, and `packs` groups of `perPack` enemies (ids cycled)
+   * charge in from upwind
+   */
+  | { t: number; kind: "blizzard"; duration: number; text: string; ids: string[]; packs: number; perPack: number };
 
 export const EVENTS: RunEvent[] = [
   { t: 50, kind: "swarm", id: "ghost", groups: 1, perGroup: 14, text: "วิญญาณเร่ร่อนลอยมา!" },

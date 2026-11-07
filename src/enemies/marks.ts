@@ -1,12 +1,15 @@
 import * as THREE from "three";
 import { G } from "../core/G";
+import { chillPlayer } from "./chill";
 
 /**
  * Ground marks owned by the enemy roster: attack telegraphs (filling warning
- * circles, charge lanes) and lingering hazards (toxic puddles).
+ * circles, charge lanes, breath cones) and lingering hazards (toxic puddles,
+ * chilling frost patches).
  *
  * A small pool of flat meshes (one draw call per *visible* mark). Marks are
- * purely visual except puddles, which tick damage on the player.
+ * purely visual except puddles, which tick damage on the player, and frost
+ * patches, which chill (slow) the player standing in them.
  * Updated from Director.update(), cleared by Director.reset(); they hide
  * themselves automatically outside of a run (menu / results).
  */
@@ -15,6 +18,8 @@ export const MARK_CIRCLE = 0;
 export const MARK_LANE = 1;
 export const MARK_PUDDLE = 2;
 export const MARK_AURA = 3;
+export const MARK_FROST = 4;
+export const MARK_CONE = 5;
 
 export interface Mark {
   active: boolean;
@@ -23,11 +28,11 @@ export interface Mark {
   kind: number;
   x: number;
   z: number;
-  /** lane direction (yaw convention: atan2(dx, dz)) */
+  /** lane / cone direction (yaw convention: atan2(dx, dz)) */
   angle: number;
-  /** circle radius or lane width */
+  /** circle radius, lane width or cone range */
   r: number;
-  /** lane length */
+  /** lane length or cone half-angle (radians) */
   len: number;
   t: number;
   dur: number;
@@ -97,6 +102,36 @@ void main() {
     float rim = smoothstep(0.75, 0.95, r);
     a = 0.55 + rim * 0.35;
     col = mix(uColor * 0.65, uColor, rim) + bub * 0.35;
+  } else if (uMode > 3.5 && uMode < 4.5) {
+    // frost patch: cracked ice sheet with a bright frosty rim
+    vec2 p = vUv * 2.0 - 1.0;
+    float ang = atan(p.y, p.x);
+    float wob = 0.9 + 0.05 * sin(ang * 6.0) + 0.03 * sin(ang * 11.0 + 1.7);
+    float r = length(p) / wob;
+    if (r > 1.0) discard;
+    float cr = abs(fract(ang * 1.1459 + r * 0.6) - 0.5);
+    float crack = (1.0 - smoothstep(0.0, 0.035, cr)) * smoothstep(0.15, 0.4, r);
+    float ring = 1.0 - smoothstep(0.0, 0.05, abs(r - 0.55));
+    float rim = smoothstep(0.78, 0.97, r);
+    float shine = 0.5 + 0.5 * sin(uTime * 3.0 + p.x * 4.0 - p.y * 3.0);
+    a = 0.42 + rim * 0.4 + crack * 0.25 + ring * 0.12;
+    col = mix(uColor, vec3(1.0), rim * 0.55 + crack * 0.5 + shine * 0.08);
+  } else if (uMode > 4.5) {
+    // breath cone: sector pointing along local +Z (= -vUv.y), filling outward
+    vec2 p = vUv * 2.0 - 1.0;
+    float r = length(p);
+    float ang = abs(atan(p.x, -p.y));
+    float half_ = uSize.y;
+    if (r > 1.0 || ang > half_) discard;
+    float bw = clamp(0.16 / uSize.x, 0.02, 0.2);
+    float side = (half_ - ang) * r;
+    float edge = max(smoothstep(1.0 - bw * 1.6, 1.0 - bw, r), 1.0 - smoothstep(bw * 0.6, bw * 1.4, side));
+    float fill = 1.0 - smoothstep(uProgress - 0.015, uProgress, r);
+    float front = fill * smoothstep(uProgress - 0.12, uProgress, r);
+    float blink = 0.75 + 0.25 * sin(uTime * (10.0 + uProgress * 22.0));
+    a = max(0.22, fill * 0.5 + front * 0.35);
+    a = max(a, edge * 0.92 * blink);
+    col = mix(uColor, vec3(1.0, 0.95, 0.9), edge * 0.2 + front * 0.45);
   } else {
     // boss aura: pulsing dashed ring that keeps the boss readable in a crowd
     vec2 p = vUv * 2.0 - 1.0;
@@ -188,7 +223,7 @@ class MarkSystem {
     for (const m of this.pool) {
       if (!m.active) return m;
       // recycle the mark closest to finishing, puddles before telegraphs
-      if (m.kind === MARK_PUDDLE && (!bestPuddle || m.t / m.dur > bestPuddle.t / bestPuddle.dur)) bestPuddle = m;
+      if ((m.kind === MARK_PUDDLE || m.kind === MARK_FROST) && (!bestPuddle || m.t / m.dur > bestPuddle.t / bestPuddle.dur)) bestPuddle = m;
       if (!best || m.t / m.dur > best.t / best.dur) best = m;
     }
     return bestPuddle ?? best!;
@@ -213,7 +248,7 @@ class MarkSystem {
     m.mesh.geometry = kind === MARK_LANE ? this.laneGeo! : this.discGeo!;
     // attack warnings draw over the horde (enemy bodies would otherwise hide most of
     // the circle/lane); puddles and auras stay depth tested on the ground
-    const tele = kind === MARK_CIRCLE || kind === MARK_LANE;
+    const tele = kind === MARK_CIRCLE || kind === MARK_LANE || kind === MARK_CONE;
     m.mat.depthTest = !tele;
     m.mesh.renderOrder = tele ? 20 : 3;
     m.mesh.visible = true;
@@ -247,6 +282,30 @@ class MarkSystem {
     m.dmg = dmg;
     m.tick = 0.35;
     m.mat.uniforms.uSize.value.set(r, r);
+    this.place(m);
+    return m;
+  }
+
+  /** icy patch that chills (slows) the player standing in it */
+  frost(x: number, z: number, r: number, dur: number, color = "#a8e8ff"): Mark {
+    const m = this.setup(this.take(), MARK_FROST, x, z, color, dur, 0);
+    m.r = r;
+    m.tick = 0.1;
+    m.mat.uniforms.uSize.value.set(r, r);
+    this.place(m);
+    return m;
+  }
+
+  /**
+   * filling breath cone from (x,z) towards `angle` (atan2(dx,dz)): `range`
+   * long, `halfAngle` radians to each side; fully filled after `dur`
+   */
+  cone(x: number, z: number, angle: number, range: number, halfAngle: number, dur: number, owner = 0, color = "#ff2424"): Mark {
+    const m = this.setup(this.take(), MARK_CONE, x, z, color, dur, owner);
+    m.angle = angle;
+    m.r = range;
+    m.len = halfAngle;
+    m.mat.uniforms.uSize.value.set(range, halfAngle);
     this.place(m);
     return m;
   }
@@ -294,8 +353,12 @@ class MarkSystem {
       mesh.position.set(m.x, 0.045, m.z);
       mesh.rotation.set(0, m.angle, 0);
       mesh.scale.set(m.r, 1, m.len);
+    } else if (m.kind === MARK_CONE) {
+      mesh.position.set(m.x, 0.05, m.z);
+      mesh.rotation.set(0, m.angle, 0);
+      mesh.scale.set(m.r, 1, m.r);
     } else {
-      mesh.position.set(m.x, m.kind === MARK_PUDDLE ? 0.035 : m.kind === MARK_AURA ? 0.03 : 0.05, m.z);
+      mesh.position.set(m.x, m.kind === MARK_PUDDLE || m.kind === MARK_FROST ? 0.035 : m.kind === MARK_AURA ? 0.03 : 0.05, m.z);
       mesh.rotation.set(0, 0, 0);
       mesh.scale.set(m.r, 1, m.r);
     }
@@ -323,6 +386,18 @@ class MarkSystem {
           const dz = p.z - m.z;
           const rr = m.r * 0.85 + p.radius * 0.5;
           if (dx * dx + dz * dz < rr * rr) p.takeDamage(m.dmg);
+        }
+      } else if (m.kind === MARK_FROST) {
+        const grow = Math.min(1, m.t * 7);
+        m.mesh.scale.set(m.r * (0.3 + 0.7 * grow), 1, m.r * (0.3 + 0.7 * grow));
+        u.uAlpha.value = k > 0.7 ? (1 - k) / 0.3 : 0.9;
+        m.tick -= dt;
+        if (m.tick <= 0) {
+          m.tick = 0.25;
+          const dx = p.x - m.x;
+          const dz = p.z - m.z;
+          const rr = m.r * 0.85 + p.radius * 0.5;
+          if (k < 0.85 && dx * dx + dz * dz < rr * rr) chillPlayer(0.5, 0.65);
         }
       } else if (m.kind === MARK_AURA) {
         u.uAlpha.value = Math.min(1, m.t * 2);

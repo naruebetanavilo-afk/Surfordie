@@ -50,7 +50,8 @@ export function startStampede(em: EnemyManager, i: number, angle: number, speed:
   em.yaw[i] = angle;
 }
 
-function stampede(em: EnemyManager, i: number, dt: number): boolean {
+/** one frame of a director stampede charge; returns false once it is over (mode reset to 0) */
+export function stampede(em: EnemyManager, i: number, dt: number): boolean {
   em.ai1[i] -= dt;
   if (em.ai1[i] <= 0) {
     em.ai0[i] = 0;

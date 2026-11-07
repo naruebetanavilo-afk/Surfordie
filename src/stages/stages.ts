@@ -1,4 +1,5 @@
 import { PHASES, EVENTS, type Phase, type RunEvent } from "../director/timeline";
+import { SNOW_PHASES, SNOW_EVENTS } from "../director/timelineSnow";
 
 /**
  * A stage = one 10-minute map: its spawn timeline (phases + scripted events)
@@ -37,14 +38,33 @@ export const STAGES: StageDef[] = [
     desc: "ป่าช้าเยือกแข็งกลางพายุหิมะ ฝูงหมาป่าน้ำแข็งและพญาเหมันต์รออยู่",
     color: "#8fd8ff",
     theme: "snow",
-    phases: PHASES,
-    events: EVENTS,
+    phases: SNOW_PHASES,
+    events: SNOW_EVENTS,
     requires: "meadow",
   },
 ];
 
 export function stageById(id: string): StageDef {
   return STAGES.find((s) => s.id === id) ?? STAGES[0];
+}
+
+/**
+ * Enemy ids a stage uses (phases, elites, scripted events), split into
+ * regulars and bosses — e.g. for the debug lineup.
+ */
+export function stageRoster(stage: StageDef): { regular: Set<string>; bosses: Set<string> } {
+  const regular = new Set<string>();
+  const bosses = new Set<string>();
+  for (const ph of stage.phases) {
+    for (const id of Object.keys(ph.weights)) regular.add(id);
+    for (const id of ph.elites ?? []) regular.add(id);
+  }
+  for (const e of stage.events) {
+    if (e.kind === "boss") bosses.add(e.id);
+    else if (e.kind === "swarm") regular.add(e.id);
+    else if (e.kind !== "warn") for (const id of e.ids) regular.add(id);
+  }
+  return { regular, bosses };
 }
 
 let dbgStage: string | null | undefined;
