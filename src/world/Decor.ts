@@ -93,7 +93,7 @@ const DECOR_SETS: Record<string, DecorSetDef> = {
   snow: {
     tuft: buildSnowTuft,
     tuftTints: ["#ffffff", "#e8f0ff", "#dde8f6", "#f4f6ff", "#d4e2f0"].map((c) => new THREE.Color(c)),
-    tufts: [3, 3],
+    tufts: [4, 3],
     small: SNOW_SMALL,
     big: SNOW_BIG,
     smallW: {
@@ -108,9 +108,9 @@ const DECOR_SETS: Record<string, DecorSetDef> = {
       1: [5, 3.2, 0.4, 0.9, 1.5, 1.4, 0.3, 0.7],
       2: [0.4, 0.3, 3.6, 2.0, 0.5, 0.6, 1.6, 1.0],
     },
-    smallP: { 0: 0.45, 1: 0.55, 2: 0.55 },
-    bigP: { 0: 0.1, 1: 0.24, 2: 0.19 },
-    small2P: 0.18,
+    smallP: { 0: 0.5, 1: 0.6, 2: 0.6 },
+    bigP: { 0: 0.13, 1: 0.26, 2: 0.22 },
+    small2P: 0.22,
     moteP: 0.12,
     moteColors: ["#9fe6ff", "#c8f4ff"],
   },

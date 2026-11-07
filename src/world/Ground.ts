@@ -125,9 +125,9 @@ if (uGround < 0.5) {
   col *= 0.97 + smoothstep(0.55, 0.9, drift) * 0.07;
 
   // frozen ice patches: smooth blue sheets with a darker rim and cracks
-  float iceN = gNoise(p * 0.075 + 41.0) + (nM - 0.5) * 0.12;
-  float ice = smoothstep(0.63, 0.69, iceN);
-  float iceRim = ice * (1.0 - smoothstep(0.69, 0.77, iceN));
+  float iceN = gNoise(p * 0.2 + 41.0) + (nM - 0.5) * 0.1;
+  float ice = smoothstep(0.72, 0.76, iceN);
+  float iceRim = ice * (1.0 - smoothstep(0.76, 0.84, iceN));
   vec3 iceCol = mix(${lin("#97bfe4")}, ${lin("#b9d9f2")}, nS);
   float crack = 1.0 - smoothstep(0.0, 0.035, abs(gNoise(p * 1.3 + 5.0) - 0.5));
   iceCol *= 1.0 - crack * 0.22;
