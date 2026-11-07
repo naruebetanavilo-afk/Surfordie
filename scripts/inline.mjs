@@ -26,6 +26,8 @@ html = html.replace(/<link([^>]*?)rel="stylesheet"([^>]*?)href="([^"]+)"([^>]*)>
 });
 // drop modulepreload hints for local chunks
 html = html.replace(/<link rel="modulepreload"[^>]*>/g, "");
+// the single file has no manifest / icons / service worker next to it
+html = html.replace(/<link rel="(manifest|icon|apple-touch-icon)"[^>]*>\s*/g, "");
 
 mkdirSync(outDir, { recursive: true });
 writeFileSync(path.join(outDir, "index.html"), html);
