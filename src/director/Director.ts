@@ -5,7 +5,11 @@ import { resetHostile, warmUpHostile } from "../enemies/hostile";
 import { resetBosses, setBossesPassive } from "../enemies/bosses";
 import { startStampede, MODE_STAMPEDE } from "../enemies/ai";
 import { type Phase, type RunEvent } from "./timeline";
-import { stageById } from "../stages/stages";
+import { stageById, debugStageId, stageRoster } from "../stages/stages";
+import { Weather } from "../world/Weather";
+import { updateFrost, resetFrost } from "../enemies/chill";
+import { IceFx } from "../enemies/iceFx";
+import { updateIcicles, resetFrostBoss } from "../enemies/bossFrost";
 
 /** length of a full run in seconds; surviving this long = victory */
 export const RUN_LENGTH = 10 * 60;
@@ -37,9 +41,13 @@ interface PendingStampede {
  *    small same-type clusters just outside the screen
  *  - elites on a timer (they drop chests)
  *  - scripted events: encircling hordes, telegraphed stampedes, spirit
- *    swarms, boss warnings and the three bosses (3:00, 6:00, 9:00)
- * Also ticks the enemy ground telegraphs (Marks) and resets all enemy-side
- * run state on reset().
+ *    swarms, blizzards (stage "snow"), boss warnings and the three bosses
+ *    (3:00, 6:00, 9:00)
+ * The timeline comes from the stage `G.stageId` (src/stages/stages.ts;
+ * `?stage=<id>` overrides it for debugging).
+ * Also ticks the enemy ground telegraphs (Marks), ice crystals (IceFx),
+ * falling icicles, the weather and the hero's chill/wind (chill.ts), and
+ * resets all enemy-side run state on reset().
  */
 export class Director {
   private acc = 0;
@@ -61,7 +69,12 @@ export class Director {
 
   constructor() {
     this.cache = [];
+    // ?stage=<id> picks the stage at boot (the world follows G.stageId, menu included)
+    const dbg = debugStageId();
+    if (dbg) G.stageId = dbg;
     this.loadStage();
+    // build the ice crystal layer now so the boot-time shader prewarm compiles it
+    IceFx.prepare();
     G.events.on("bossKilled", () => {
       this.bossAlive = Math.max(0, this.bossAlive - 1);
       if (this.bossAlive === 0) this.setBossMood(false);
@@ -86,7 +99,14 @@ export class Director {
   }
 
   reset(): void {
+    // the debug override wins over the menu's stage choice
+    const dbg = debugStageId();
+    if (dbg) G.stageId = dbg;
     this.loadStage();
+    Weather.reset();
+    resetFrost();
+    resetFrostBoss();
+    IceFx.clear();
     this.acc = 0;
     this.quiet = false;
     this.lineup.length = 0;
@@ -117,8 +137,9 @@ export class Director {
   }
 
   /**
-   * Debug URL params: `lineup=1` parades every enemy type (immobile, tanky)
-   * above the player; `boss=bossBull|bossWitch|bossKing` spawns a boss now.
+   * Debug URL params: `lineup=1` parades every enemy type of the current
+   * stage (immobile, tanky) above the player; `boss=<id>` (bossBull,
+   * bossWitch, bossKing, bossFrost) spawns a boss now.
    */
   private debugSpawns(): void {
     const q = new URLSearchParams(location.search);
@@ -126,13 +147,26 @@ export class Director {
     if (q.get("lineup") === "1") {
       setBossesPassive(true);
       this.quiet = true;
-      const regular = ENEMY_DEFS.filter((d) => !d.boss);
+      const roster = stageRoster(stageById(G.stageId));
+      const regular = ENEMY_DEFS.filter((d) => !d.boss && roster.regular.has(d.id));
+      const bosses = ENEMY_DEFS.filter((d) => d.boss && roster.bosses.has(d.id));
       const put = (id: string, ox: number, oz: number, hpMul: number): void => {
         const i = em.spawn(id, ox, oz, { hpMul, speedMul: 0 });
         if (i >= 0) this.lineup.push(em.uid[i], ox, oz);
       };
-      regular.forEach((d, k) => put(d.id, -4.8 + (k / (regular.length - 1)) * 9.6, -2.4 - (k % 2) * 1.5, 1e4));
-      ENEMY_DEFS.filter((d) => d.boss).forEach((d, k) => put(d.id, -4.2 + k * 4.2, -8.2 + (k % 2) * 0.6, 1e3));
+      const n = regular.length;
+      if (n <= 8) {
+        regular.forEach((d, k) => put(d.id, -4.8 + (k / Math.max(1, n - 1)) * 9.6, -2.4 - (k % 2) * 1.5, 1e4));
+      } else {
+        // two rows for a bigger roster
+        const cols = Math.ceil(n / 2);
+        regular.forEach((d, k) => {
+          const row = k < cols ? 0 : 1;
+          const c = row ? k - cols : k;
+          put(d.id, -4.8 + (c / Math.max(1, cols - 1)) * 9.6, -2.0 - row * 2.4 - (c % 2) * 0.6, 1e4);
+        });
+      }
+      bosses.forEach((d, k) => put(d.id, -4.2 + k * 4.2, -8.2 + (k % 2) * 0.6, 1e3));
     }
     const boss = q.get("boss");
     if (boss && ENEMY_DEFS.some((d) => d.id === boss && d.boss)) {
@@ -179,6 +213,10 @@ export class Director {
   update(dt: number): void {
     const t = G.time;
     Marks.update(dt);
+    IceFx.update(dt);
+    updateIcicles(dt);
+    Weather.update(t, dt);
+    updateFrost(dt);
     if (this.quiet) {
       // keep the debug parade in view while the autoplay bot wanders
       const em = G.enemies;
@@ -297,7 +335,8 @@ export class Director {
         G.audio.sfx("warn");
         break;
       case "boss":
-        this.spawnBoss(e.id);
+        this.spawnBoss(e.id, e.hpMul ?? 1);
+        if (e.announce) G.events.emit("announce", { text: e.announce, color: "#ff4f6a" });
         break;
       case "ring":
         this.ringHorde(e.ids, e.count, e.rings ?? 1);
@@ -314,17 +353,46 @@ export class Director {
         G.events.emit("announce", { text: e.text, color: "#c9a8ff" });
         G.audio.sfx("horde", { pitch: 1.4 });
         break;
+      case "blizzard":
+        this.blizzard(e.duration, e.ids, e.packs, e.perPack);
+        G.events.emit("announce", { text: e.text, color: "#bfefff" });
+        G.audio.sfx("warn");
+        G.audio.sfx("whoosh", { pitch: 0.6, vol: 0.9 });
+        break;
     }
   }
 
-  private spawnBoss(id: string): void {
+  /** heavy snow + wind for `duration` s; packs charge in from upwind */
+  private blizzard(duration: number, ids: string[], packs: number, perPack: number): void {
+    const t = G.time;
+    // the wind blows towards `wind` (atan2(z, x)); the packs come from the opposite side
+    const wind = G.rng.angle();
+    Weather.blizzard(t, duration, wind);
+    const em = G.enemies;
+    const types = ids.map(enemyDefIndex);
+    const hpMul = this.hpScale(t);
+    const dmgMul = this.dmgScale(t);
+    let room = this.room();
+    let n = 0;
+    for (let g = 0; g < packs; g++) {
+      const a = wind + Math.PI + (g - (packs - 1) / 2) * 0.55;
+      em.spawnPoint(this.tmp, 2.2, a);
+      for (let k = 0; k < perPack && room > 0; k++) {
+        const r = Math.sqrt(G.rng.next()) * 1.8;
+        const b = G.rng.angle();
+        if (em.spawn(types[n++ % types.length], this.tmp.x + Math.cos(b) * r, this.tmp.z + Math.sin(b) * r, { hpMul, dmgMul }) >= 0) room--;
+      }
+    }
+  }
+
+  private spawnBoss(id: string, hpMul = 1): void {
     const em = G.enemies;
     // enter from the left or right edge at the player's row: the top of the
     // screen is covered by the HUD, the sides never are
     const side = G.rng.next() < 0.5 ? 0 : Math.PI;
     em.spawnPoint(this.tmp, 2, side + (G.rng.next() - 0.5) * 0.6);
     // bosses scale their damage with time too (a bit gentler than the horde)
-    const i = em.spawn(id, this.tmp.x, this.tmp.z, { dmgMul: 1 + (this.dmgScale(G.time) - 1) * 0.7 });
+    const i = em.spawn(id, this.tmp.x, this.tmp.z, { hpMul, dmgMul: 1 + (this.dmgScale(G.time) - 1) * 0.7 });
     if (i < 0) return;
     const def = em.def(i);
     this.bossAlive++;

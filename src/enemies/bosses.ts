@@ -10,7 +10,7 @@ import { lobGoo, orbRing, fireOrb, ORB_GREEN, ORB_RED } from "./hostile";
  * State lives in a memo keyed by uid (slots move when the horde compacts).
  */
 
-interface BossMemo {
+export interface BossMemo {
   state: number;
   t: number;
   angle: number;
@@ -30,6 +30,9 @@ interface BossMemo {
   markGen: number;
   aura: Mark | null;
   auraGen: number;
+  /** attack origin (frost boss ice lanes) */
+  ox: number;
+  oz: number;
 }
 
 const memos = new Map<number, BossMemo>();
@@ -38,12 +41,16 @@ let passive = false;
 export function setBossesPassive(on: boolean): void {
   passive = on;
 }
+/** debug lineup: are bosses frozen in place? */
+export function bossesPassive(): boolean {
+  return passive;
+}
 
-function memo(em: EnemyManager, i: number): BossMemo {
+export function memo(em: EnemyManager, i: number): BossMemo {
   const uid = em.uid[i];
   let m = memos.get(uid);
   if (!m) {
-    m = { state: 0, t: 2.5, angle: 0, len: 0, travelled: 0, counter: 0, stage: 0, hitDone: false, chain: 0, enraged: false, volley: 0, fx: 0, wind: 1, mark: null, markGen: 0, aura: null, auraGen: 0 };
+    m = { state: 0, t: 2.5, angle: 0, len: 0, travelled: 0, counter: 0, stage: 0, hitDone: false, chain: 0, enraged: false, volley: 0, fx: 0, wind: 1, mark: null, markGen: 0, aura: null, auraGen: 0, ox: 0, oz: 0 };
     memos.set(uid, m);
   }
   return m;
@@ -55,38 +62,42 @@ export function resetBosses(): void {
   passive = false;
 }
 
-function setMark(m: BossMemo, mark: Mark): void {
+export function setMark(m: BossMemo, mark: Mark): void {
   m.mark = mark;
   m.markGen = mark.gen;
 }
 
-function clearMark(m: BossMemo): void {
+export function clearMark(m: BossMemo): void {
   Marks.end(m.mark, m.markGen);
   m.mark = null;
 }
 
-function distToPlayer(em: EnemyManager, i: number): number {
+export function distToPlayer(em: EnemyManager, i: number): number {
   return Math.hypot(G.player.x - em.x[i], G.player.z - em.z[i]);
 }
 
-function angleToPlayer(em: EnemyManager, i: number): number {
+export function angleToPlayer(em: EnemyManager, i: number): number {
   return Math.atan2(G.player.x - em.x[i], G.player.z - em.z[i]);
 }
 
 /** pulse the white hit-flash to show a charging attack */
-function windupPulse(em: EnemyManager, i: number, k: number): void {
+export function windupPulse(em: EnemyManager, i: number, k: number): void {
   em.flash[i] = Math.max(em.flash[i], 0.15 + 0.4 * k * (0.5 + 0.5 * Math.sin(em.age[i] * (20 + k * 30))));
 }
 
-function hurtPlayerInCircle(x: number, z: number, r: number, dmg: number): void {
+export function hurtPlayerInCircle(x: number, z: number, r: number, dmg: number): boolean {
   const p = G.player;
   const dx = p.x - x;
   const dz = p.z - z;
   const rr = r + p.radius * 0.5;
-  if (dx * dx + dz * dz < rr * rr) p.takeDamage(dmg);
+  if (dx * dx + dz * dz < rr * rr) {
+    p.takeDamage(dmg);
+    return true;
+  }
+  return false;
 }
 
-function shove(em: EnemyManager, self: number, x: number, z: number, r: number, force: number): void {
+export function shove(em: EnemyManager, self: number, x: number, z: number, r: number, force: number): void {
   em.queryCircle(x, z, r, (j) => {
     if (j !== self && !em.isBoss(j)) em.knock(j, em.x[j] - x, em.z[j] - z, force);
   });
@@ -95,7 +106,7 @@ function shove(em: EnemyManager, self: number, x: number, z: number, r: number, 
 const SUMMON_CAP = 700;
 
 /** spawn minions around (cx,cz) in a ring, with a puff for each */
-function summon(id: string, count: number, cx: number, cz: number, radius: number, color: string, elite = false): void {
+export function summon(id: string, count: number, cx: number, cz: number, radius: number, color: string, elite = false): void {
   const em = G.enemies;
   const hpMul = G.director.hpScale(G.time);
   const dmgMul = G.director.dmgScale(G.time);
@@ -254,7 +265,7 @@ function slamHit(em: EnemyManager, i: number, m: BossMemo, dmg: number, color: s
   shove(em, i, x, z, r * 1.3, 30);
 }
 
-function roar(em: EnemyManager, i: number, m: BossMemo): void {
+export function roar(em: EnemyManager, i: number, m: BossMemo): void {
   m.state = ROAR;
   m.t = 1.0;
   G.audio.sfx("bossRoar");
@@ -263,7 +274,7 @@ function roar(em: EnemyManager, i: number, m: BossMemo): void {
 }
 
 /** HP threshold check: returns true once per threshold crossed */
-function crossed(em: EnemyManager, i: number, m: BossMemo, frac: number, bit: number): boolean {
+export function crossed(em: EnemyManager, i: number, m: BossMemo, frac: number, bit: number): boolean {
   if (m.stage & bit) return false;
   if (em.hp[i] / em.maxHp[i] > frac) return false;
   m.stage |= bit;
@@ -540,10 +551,10 @@ export function kingUpdate(em: EnemyManager, i: number, dt: number): boolean {
   }
 }
 
-const AURA_COLOR: Record<string, string> = { bossBull: "#ff7a2a", bossWitch: "#7dff3a", bossKing: "#ff2f6a" };
+const AURA_COLOR: Record<string, string> = { bossBull: "#ff7a2a", bossWitch: "#7dff3a", bossKing: "#ff2f6a", bossFrost: "#2fb8ff" };
 
 /** keep the boss ground ring under its feet */
-function followAura(em: EnemyManager, i: number, m: BossMemo): void {
+export function followAura(em: EnemyManager, i: number, m: BossMemo): void {
   if (m.aura) Marks.move(m.aura, m.auraGen, em.x[i], em.z[i]);
 }
 

@@ -14,11 +14,16 @@ import {
 } from "./models";
 import { chaserUpdate, mummyUpdate, ghostUpdate, spitterSpawn, spitterUpdate, bloaterUpdate, bloaterDeath } from "./ai";
 import { bullUpdate, witchUpdate, kingUpdate, bossSpawn, bossDeath } from "./bosses";
+import { buildFrostWolf, buildIceZombie, buildSnowImp, buildYeti, buildFrostBoss } from "./modelsSnow";
+import { wolfSpawn, wolfUpdate, iceZombieUpdate, impSpawn, impUpdate, yetiSpawn, yetiUpdate, yetiDeath } from "./snowAi";
+import { frostUpdate, frostDeath } from "./bossFrost";
 
 /**
  * Enemy roster. The order matters only for rendering; look enemies up by id.
  * Every def gets its own InstancedMesh (one draw call), so keep the list short.
  * Models live in models.ts, behaviour hooks in ai.ts / bosses.ts.
+ * The frozen-graveyard roster (stage "snow") lives in modelsSnow.ts /
+ * snowAi.ts / bossFrost.ts. A type only costs a draw call while it is alive.
  */
 export const ENEMY_DEFS: EnemyDef[] = [
   {
@@ -178,6 +183,93 @@ export const ENEMY_DEFS: EnemyDef[] = [
     build: buildGhost,
     update: ghostUpdate,
   },
+  // ------------------------------------------------- frozen graveyard --
+  {
+    // pack hunter: flanks, crouches (flash) and lunges
+    id: "frostWolf",
+    name: "หมาป่าน้ำแข็ง",
+    hp: 9,
+    speed: 3.6,
+    damage: 6,
+    radius: 0.4,
+    mass: 0.9,
+    xp: 1,
+    scale: 1,
+    walkRate: 1.9,
+    hpBarY: 1.25,
+    color: "#56688f",
+    anim: { armRaise: 0, armAmp: 0.75, legAmp: 0.75, bob: 0.07, sway: 0.03 },
+    capacity: 260,
+    coinChance: 0.03,
+    build: buildFrostWolf,
+    onSpawn: wolfSpawn,
+    update: wolfUpdate,
+  },
+  {
+    // sturdy frozen corpse: its touch chills (slows) the hero
+    id: "iceZombie",
+    name: "ซอมบี้น้ำแข็ง",
+    hp: 30,
+    speed: 1.6,
+    damage: 8,
+    radius: 0.46,
+    mass: 2.2,
+    xp: 2,
+    scale: 1.05,
+    walkRate: 0.7,
+    hpBarY: 1.75,
+    color: "#8cbbe0",
+    anim: { armRaise: 1.3, armAmp: 0.15, legAmp: 0.45, sway: 0.07 },
+    capacity: 420,
+    coinChance: 0.05,
+    build: buildIceZombie,
+    update: iceZombieUpdate,
+  },
+  {
+    // ranged: keeps distance, lobs snowballs that chill and leave frost patches
+    id: "snowImp",
+    name: "ภูตปาหิมะ",
+    hp: 12,
+    speed: 2.0,
+    damage: 4,
+    radius: 0.4,
+    mass: 0.9,
+    xp: 2,
+    scale: 0.95,
+    walkRate: 1.1,
+    hpBarY: 1.55,
+    color: "#d0662c",
+    anim: { armRaise: 0.4, armAmp: 0.4, legAmp: 0.6, bob: 0.06 },
+    capacity: 70,
+    coinChance: 0.05,
+    build: buildSnowImp,
+    onSpawn: impSpawn,
+    update: impUpdate,
+  },
+  {
+    // slow snow giant: telegraphed ground pound (damage + chill + shove)
+    id: "yeti",
+    name: "ยักษ์หิมะ",
+    hp: 110,
+    speed: 1.3,
+    damage: 15,
+    radius: 0.76,
+    mass: 7,
+    xp: 7,
+    scale: 1.65,
+    walkRate: 0.55,
+    hpBarY: 2.7,
+    color: "#8d97c0",
+    anim: { armRaise: 0.8, armAmp: 0.4, legAmp: 0.38, bob: 0.07, sway: 0.12 },
+    capacity: 120,
+    coinChance: 0.14,
+    build: buildYeti,
+    onSpawn: yetiSpawn,
+    update: yetiUpdate,
+    onDeath: yetiDeath,
+    // the pound telegraph is already counting down: freezing would desync it
+    ignoreFreeze: (em, i) => em.ai0[i] === 1,
+  },
   // ------------------------------------------------------------- bosses --
   {
     id: "bossBull",
@@ -241,6 +333,28 @@ export const ENEMY_DEFS: EnemyDef[] = [
     update: kingUpdate,
     onSpawn: bossSpawn,
     onDeath: bossDeath,
+  },
+  {
+    // final boss of the frozen graveyard (stage "snow")
+    id: "bossFrost",
+    name: "พญาเหมันต์",
+    hp: 30000,
+    speed: 1.6,
+    damage: 20,
+    radius: 1.05,
+    mass: 100,
+    xp: 600,
+    scale: 2.35,
+    walkRate: 0.5,
+    hpBarY: 5.0,
+    color: "#26386a",
+    anim: { armRaise: 0.75, armAmp: 0.2, legAmp: 0.32, sway: 0.06, bob: 0.05 },
+    capacity: 2,
+    boss: true,
+    build: buildFrostBoss,
+    update: frostUpdate,
+    onSpawn: bossSpawn,
+    onDeath: frostDeath,
   },
 ];
 

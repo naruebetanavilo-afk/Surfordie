@@ -4,6 +4,10 @@ import { damp } from "../core/math";
 import { Decor } from "./Decor";
 import { createGround, GROUND_FOG_COLOR } from "./Ground";
 import { createVignette } from "./Vignette";
+import { Snowfall } from "./Snowfall";
+import { Weather } from "./Weather";
+import { themeById, type WorldTheme } from "./themes";
+import { stageById } from "../stages/stages";
 
 export type Quality = "low" | "medium" | "high";
 
@@ -16,9 +20,17 @@ const SPAWN_HEIGHT = 2.4;
 /** fill light offset from the target: camera side (+Z), from the right, fairly low */
 const FILL_DIR = new THREE.Vector3(6, 4.5, 10);
 
+/** blizzard haze colour (the fog drifts towards it while a storm rages) */
+const STORM_FOG = new THREE.Color("#c9d8ea");
+
 /**
  * Owns renderer, scene, camera, lights and the infinite ground.
  * Camera looks down at roughly 54 degrees; screen-up is world -Z.
+ *
+ * World look: follows the theme of the current stage (`stageById(G.stageId).theme`,
+ * checked every frame, also on the menu) or `setTheme(id)` directly — ground
+ * pattern, decor set, fog/background, light tint, vignette and snowfall
+ * (see themes.ts). `Weather.storm` thickens the snow and whitens the haze.
  */
 export class World {
   renderer: THREE.WebGLRenderer;
@@ -35,6 +47,16 @@ export class World {
   fill: THREE.DirectionalLight;
   hemi: THREE.HemisphereLight;
   private vignette: THREE.Mesh;
+  private vignetteU: { uColor: { value: THREE.Color }; uStrength: { value: number }; uFrost: { value: number } };
+  /** light snowfall layer (one Points draw call, visible on snowy themes) */
+  readonly snow: Snowfall;
+  /** current world theme id */
+  theme = "meadow";
+  private themeDef: WorldTheme = themeById("meadow");
+  /** G.stageId seen last frame (cheap change detection) */
+  private themeStage = "";
+  private readonly fogBase = new THREE.Color(GROUND_FOG_COLOR);
+  private lastStorm = 0;
 
   /**
    * True until the next render() after something invalidated the canvas
@@ -87,6 +109,7 @@ export class World {
     uCenter: { value: new THREE.Vector2() },
     uView: { value: new THREE.Vector2(6, 16) },
     uLightComp: { value: new THREE.Vector3(1, 1, 1) },
+    uGround: { value: 0 },
   };
 
   constructor(canvas: HTMLCanvasElement) {
@@ -137,7 +160,11 @@ export class World {
     this.decor = new Decor(this.scene);
 
     this.vignette = createVignette();
+    this.vignetteU = (this.vignette.material as THREE.ShaderMaterial).uniforms as World["vignetteU"];
     this.scene.add(this.vignette);
+
+    this.snow = new Snowfall(this.quality);
+    this.scene.add(this.snow.points);
 
     this.resize();
     window.addEventListener("resize", () => this.resize());
@@ -156,6 +183,71 @@ export class World {
     base.add(new THREE.Color().copy(this.sun.color).multiplyScalar(up(this.sun)));
     const withFill = base.clone().add(new THREE.Color().copy(this.fill.color).multiplyScalar(up(this.fill)));
     this.groundUniforms.uLightComp.value.set(base.r / withFill.r, base.g / withFill.g, base.b / withFill.b);
+  }
+
+  /**
+   * Switch the world look: ground palette/pattern, decor set, fog/background,
+   * light tint, vignette and snowfall. Unknown ids fall back to "meadow".
+   * Cheap enough for the menu (the decor set is built once, on first use).
+   */
+  setTheme(id: string): void {
+    const th = themeById(id);
+    if (th.id === this.theme && this.themeDef === th) return;
+    this.theme = th.id;
+    this.themeDef = th;
+    this.groundUniforms.uGround.value = th.ground;
+    this.fogBase.set(th.fog);
+    (this.scene.background as THREE.Color).copy(this.fogBase);
+    (this.scene.fog as THREE.Fog).color.copy(this.fogBase);
+    this.hemi.color.set(th.hemiSky);
+    this.hemi.groundColor.set(th.hemiGround);
+    this.hemi.intensity = th.hemi;
+    this.sun.color.set(th.sun);
+    this.sun.intensity = th.sunI;
+    this.fill.color.set(th.fill);
+    this.fill.intensity = th.fillI;
+    this.compensateGroundFill();
+    this.vignetteU.uColor.value.set(th.vignette);
+    this.vignetteU.uStrength.value = th.vignetteI;
+    this.vignetteU.uFrost.value = 0;
+    this.snow.points.visible = th.snow;
+    this.decor.setTheme(th.decor);
+    this.fitFog();
+    this.lastStorm = -1;
+    this.renderRequested = true;
+  }
+
+  /** follow the stage's theme (string compare per frame; stage lookup only on change) */
+  private followStage(): void {
+    const sid = G.stageId;
+    if (sid === this.themeStage) return;
+    this.themeStage = sid;
+    this.setTheme(stageById(sid).theme);
+  }
+
+  /** blizzard visuals: thicker snow, whiter haze, frosted screen edges */
+  private updateWeather(dt: number): void {
+    const th = this.themeDef;
+    if (!th.snow) return;
+    // the menu shows calm snow; the storm only exists during a run
+    const storm = G.state === "menu" ? 0 : Weather.storm;
+    this.snow.update(dt, G.realTime, storm, Weather.windX, Weather.windZ, this.camTarget.x, this.camTarget.z + this.lookOffZ, this.viewHalfW, this.viewHalfH);
+    if (Math.abs(storm - this.lastStorm) < 0.002) return;
+    this.lastStorm = storm;
+    const fog = this.scene.fog as THREE.Fog;
+    fog.color.copy(this.fogBase).lerp(STORM_FOG, storm * 0.85);
+    (this.scene.background as THREE.Color).copy(fog.color);
+    this.vignetteU.uFrost.value = storm * 0.9;
+    this.fitFog();
+  }
+
+  /** fog distances: view depth target = D, far edge ~1.37 D; a blizzard pulls the haze in */
+  private fitFog(): void {
+    const fog = this.scene.fog as THREE.Fog;
+    const D = this.camDist;
+    const storm = this.themeDef.snow && G.state !== "menu" ? Weather.storm : 0;
+    fog.near = D * (1.08 - storm * 0.22);
+    fog.far = D * (2.15 - storm * 0.6);
   }
 
   setQuality(q: Quality): void {
@@ -180,6 +272,8 @@ export class World {
     this.renderRequested = true;
     this.camera.aspect = w / h;
     this.fitCamera();
+    // snowflake size: pixels per world unit at view depth 1
+    this.snow.setScale((h * this.dpr) / (2 * Math.tan((this.camera.fov * Math.PI) / 360)));
     // the 2D overlay follows the quality preset too ("low" = same DPR as the 3D canvas)
     G.overlay?.resize(w, h, this.quality === "low" ? this.dpr : Math.min(window.devicePixelRatio || 1, 2));
   }
@@ -222,10 +316,8 @@ export class World {
     const beta = Math.atan(0.46 * tanV);
     this.lookOffZ = this.menuBlend * D * (sin / Math.tan(th - beta) - cos);
 
-    const fog = this.scene.fog as THREE.Fog;
     // view-space depth: target = D, far edge ~1.37 D -> the top strip fades into haze
-    fog.near = D * 1.08;
-    fog.far = D * 2.15;
+    this.fitFog();
     this.groundUniforms.uView.value.set(this.viewHalfW, far);
   }
 
@@ -237,6 +329,7 @@ export class World {
   update(dt: number, tx: number, tz: number): void {
     const realDt = dt;
     this.groundUniforms.uTime.value = G.realTime;
+    this.followStage();
 
     // crowded screen -> ease the camera back a little (max +9%)
     const alive = G.state === "playing" && G.enemies ? G.enemies.alive : 0;
@@ -285,6 +378,7 @@ export class World {
     this.fill.position.set(this.camTarget.x + FILL_DIR.x, FILL_DIR.y, this.camTarget.z + FILL_DIR.z);
     this.fill.target.position.set(this.camTarget.x, 0, this.camTarget.z);
     this.decor.update(this.camTarget.x, this.camTarget.z + this.lookOffZ, this.viewHalfW, this.viewHalfH);
+    this.updateWeather(realDt);
   }
 
   render(): void {

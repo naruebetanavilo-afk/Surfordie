@@ -2,12 +2,16 @@ import * as THREE from "three";
 import { G } from "../core/G";
 import type { Proj, ProjSpawn } from "../combat/Projectiles";
 import { Marks } from "./marks";
+import { chillPlayer } from "./chill";
 
 /**
  * Hostile projectiles fired by enemies and bosses.
  *  - "sfdGoo": lobbed toxic glob. Flies in an arc towards a ground target shown
  *    by a filling warning circle, splashes on landing and leaves a puddle.
  *  - "sfdOrbG" / "sfdOrbR": straight bullets (boss volleys), green / red.
+ *  - "sfdSnow": lobbed snowball (stage "snow"). Same landing telegraph as the
+ *    goo; the splash hurts + chills and may leave a chilling frost patch.
+ *  - "sfdOrbI": icy straight bullet (frost boss).
  * Every model is a bright core with a dark inverted-hull outline so bullets
  * stay readable on top of a crowded horde.
  */
@@ -15,10 +19,15 @@ import { Marks } from "./marks";
 const GOO = "sfdGoo";
 export const ORB_GREEN = "sfdOrbG";
 export const ORB_RED = "sfdOrbR";
+export const ORB_ICE = "sfdOrbI";
+const SNOW = "sfdSnow";
 
 /** max simultaneous lobbed globs (protects against 60 spitters = bullet hell) */
 const MAX_GOO = 10;
 let gooInFlight = 0;
+/** max simultaneous snowballs */
+const MAX_SNOW = 10;
+let snowInFlight = 0;
 
 /** core + flipped, enlarged dark shell = cheap single-draw toon outline */
 function outlined(core: THREE.BufferGeometry, coreColor: string, topColor: string, rimColor: string, rim = 1.28): THREE.BufferGeometry {
@@ -69,6 +78,7 @@ function outlined(core: THREE.BufferGeometry, coreColor: string, topColor: strin
 export function ensureHostileKinds(): void {
   const pr = G.projectiles;
   if (pr.hasKind(GOO)) return;
+  ensureSnowKinds();
   const mat = new THREE.MeshBasicMaterial({ vertexColors: true });
   // goo: lumpy blob (main ball + two bumps)
   const blob = new THREE.SphereGeometry(0.26, 10, 8);
@@ -79,6 +89,17 @@ export function ensureHostileKinds(): void {
   const orb = new THREE.IcosahedronGeometry(0.3, 1);
   pr.registerKind(ORB_GREEN, { geometry: outlined(orb, "#3dff7a", "#f2ffd9", "#0b2a12", 1.3), material: mat, capacity: 256, spin: 3 });
   pr.registerKind(ORB_RED, { geometry: outlined(orb.clone(), "#ff3a3a", "#ffe08a", "#2a0505", 1.3), material: mat, capacity: 256, spin: 3 });
+}
+
+/** snowball + ice orb (registered with the other hostile kinds) */
+function ensureSnowKinds(): void {
+  const pr = G.projectiles;
+  if (pr.hasKind(SNOW)) return;
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true });
+  const ball = new THREE.IcosahedronGeometry(0.27, 1);
+  pr.registerKind(SNOW, { geometry: outlined(ball, "#b9d6f5", "#ffffff", "#163063", 1.24), material: mat, capacity: 64, tumble: 7 });
+  const shard = new THREE.OctahedronGeometry(0.3, 0).scale(0.75, 0.75, 1.35);
+  pr.registerKind(ORB_ICE, { geometry: outlined(shard, "#3fc8ff", "#effcff", "#08203f", 1.3), material: mat, capacity: 256, faceVelocity: true });
 }
 
 function mergeSimple(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
@@ -171,12 +192,94 @@ export function lobGoo(x: number, z: number, tx: number, tz: number, o: { damage
   return true;
 }
 
+// ---- lobbed snowballs ------------------------------------------------------
+
+interface SnowData extends Record<string, unknown> {
+  splash: number;
+  chill: number;
+  frost: number;
+  y0: number;
+  peak: number;
+  trail: number;
+}
+
+function snowUpdate(p: Proj, dt: number): boolean {
+  const d = p.data as SnowData;
+  p.x += p.vx * dt;
+  p.z += p.vz * dt;
+  const k = Math.min(1, p.age / p.life);
+  p.y = d.y0 * (1 - k) + 0.2 * k + d.peak * 4 * k * (1 - k);
+  d.trail -= dt;
+  if (d.trail <= 0) {
+    d.trail = 0.07;
+    G.fx.particles.burst(p.x, p.y, p.z, { count: 1, color: "#ffffff", speed: 0.3, life: 0.3, size: 0.2, gravity: -4, additive: false });
+  }
+  return true;
+}
+
+function snowLand(p: Proj): void {
+  snowInFlight = Math.max(0, snowInFlight - 1);
+  const d = p.data as SnowData;
+  const pl = G.player;
+  const dx = pl.x - p.x;
+  const dz = pl.z - p.z;
+  const rr = d.splash + pl.radius * 0.6;
+  if (dx * dx + dz * dz < rr * rr) {
+    pl.takeDamage(p.damage);
+    if (d.chill > 0) chillPlayer(d.chill, 0.6);
+  }
+  G.fx.flash(p.x, p.z, { radius: d.splash * 1.2, color: "#bfeaff", life: 0.22 });
+  G.fx.particles.burst(p.x, 0.3, p.z, { count: 12, color: "#ffffff", speed: 3.8, life: 0.5, size: 0.3, gravity: -10, up: 3.5, additive: false });
+  if (d.frost > 0) Marks.frost(p.x, p.z, d.splash * 0.95, d.frost);
+  G.audio.sfx("freeze", { pitch: 0.8, vol: 0.5 });
+}
+
+/**
+ * Lob a snowball from (x,z) to the ground point (tx,tz) with a filling icy
+ * warning circle. On landing: damage + chill inside the splash, optional frost
+ * patch (seconds). Returns false when the global snowball cap is reached.
+ */
+export function lobSnowball(
+  x: number,
+  z: number,
+  tx: number,
+  tz: number,
+  o: { damage: number; flight?: number; splash?: number; chill?: number; frost?: number; scale?: number; y0?: number },
+): boolean {
+  if (snowInFlight >= MAX_SNOW) return false;
+  ensureHostileKinds();
+  const flight = o.flight ?? 1.0;
+  const splash = o.splash ?? 1.1;
+  spec.kind = SNOW;
+  spec.x = x;
+  spec.z = z;
+  spec.y = o.y0 ?? 1.1;
+  spec.vx = (tx - x) / flight;
+  spec.vz = (tz - z) / flight;
+  spec.damage = o.damage;
+  spec.contact = false;
+  spec.radius = 0;
+  spec.life = flight;
+  spec.scale = o.scale ?? 1;
+  spec.update = snowUpdate;
+  spec.onExpire = snowLand;
+  spec.onHit = undefined;
+  const data: SnowData = { splash, chill: o.chill ?? 1.2, frost: o.frost ?? 0, y0: spec.y, peak: 1.4 + Math.hypot(tx - x, tz - z) * 0.12, trail: 0 };
+  spec.data = data;
+  const p = G.projectiles.spawn(spec);
+  if (!p) return false;
+  snowInFlight++;
+  Marks.circle(tx, tz, splash, flight, 0, "#2f8cff");
+  return true;
+}
+
 // ---- straight orbs ---------------------------------------------------------
 
 /** shared read-only payloads (no per-shot allocation) */
 const ORB_FX: Record<string, { color: string }> = {
   [ORB_GREEN]: { color: "#6aff8a" },
   [ORB_RED]: { color: "#ff6a4a" },
+  [ORB_ICE]: { color: "#bff0ff" },
 };
 
 function orbHit(p: Proj): void {
@@ -218,7 +321,7 @@ export function orbRing(kind: string, x: number, z: number, count: number, offse
  */
 export function warmUpHostile(): void {
   ensureHostileKinds();
-  for (const kind of [GOO, ORB_GREEN, ORB_RED]) {
+  for (const kind of [GOO, ORB_GREEN, ORB_RED, SNOW, ORB_ICE]) {
     spec.kind = kind;
     spec.x = G.player.x;
     spec.z = G.player.z;
@@ -240,4 +343,5 @@ export function warmUpHostile(): void {
 /** new run: forget in-flight counters (Projectiles.clear() drops them silently) */
 export function resetHostile(): void {
   gooInFlight = 0;
+  snowInFlight = 0;
 }
