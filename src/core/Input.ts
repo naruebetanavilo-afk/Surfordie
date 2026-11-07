@@ -14,14 +14,29 @@ export class Input {
   private keys = new Set<string>();
   private pointerId: number | null = null;
   private onPause: (() => void) | null = null;
+  /** Space: cast the ultimate. Returns true when the key was used (default action is then blocked) */
+  private onUlt: (() => boolean) | null = null;
+  private spaceUsed = false;
 
   constructor(private surface: HTMLElement) {
     window.addEventListener("keydown", (e) => {
       if (e.repeat) return;
       this.keys.add(e.code);
       if (e.code === "Escape" || e.code === "KeyP") this.onPause?.();
+      // in a run Space never reaches a focused button (it would re-press e.g. pause)
+      else if (e.code === "Space" && this.onUlt?.()) {
+        e.preventDefault();
+        this.spaceUsed = true;
+      }
     });
-    window.addEventListener("keyup", (e) => this.keys.delete(e.code));
+    window.addEventListener("keyup", (e) => {
+      this.keys.delete(e.code);
+      if (e.code === "Space" && this.spaceUsed) {
+        // buttons activate on Space keyup: swallow it too
+        this.spaceUsed = false;
+        e.preventDefault();
+      }
+    });
     window.addEventListener("blur", () => {
       this.keys.clear();
       this.release();
@@ -70,6 +85,10 @@ export class Input {
 
   setPauseHandler(fn: () => void): void {
     this.onPause = fn;
+  }
+
+  setUltHandler(fn: () => boolean): void {
+    this.onUlt = fn;
   }
 
   release(): void {
