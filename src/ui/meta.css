@@ -1134,6 +1134,15 @@
   color: color-mix(in srgb, var(--accent) 55%, #fff);
 }
 
+.pause-where {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.35em;
+  font-size: 0.8em;
+}
+
 .res-unlocks {
   display: flex;
   flex-direction: column;

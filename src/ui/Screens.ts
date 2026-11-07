@@ -1242,6 +1242,17 @@ export class Screens {
     stat("skull", formatNum(G.stats.kills));
     stat("star", `Lv.${G.player.level}`);
     stat("coin", formatNum(G.stats.gold));
+    // stage + curse tier of this run
+    const stage = stageDef(G.stageId) ?? STAGES[0];
+    const where = el("div", "pause-where", stats);
+    const sc = el("span", "res-chip", where);
+    sc.style.setProperty("--accent", stage.color);
+    img("", sc, stageIcon(stage.id, stage.color, Math.max(0, STAGES.indexOf(stage)), 96));
+    el("b", "", sc, stage.name);
+    const cc = el("span", "res-chip curse", where);
+    cc.style.setProperty("--accent", curseColor(G.curse));
+    img("", cc, uiIcon("curse", 64));
+    el("b", "", cc, curseName(G.curse));
 
     const section = (title: string, count: number, max: number, cls: string) => {
       const t = el("div", "sec-title " + cls, panel);

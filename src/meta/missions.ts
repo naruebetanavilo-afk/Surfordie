@@ -122,18 +122,27 @@ export function isMaxStat(stat: StatKey): boolean {
   return MAX_STATS.has(stat);
 }
 
+/** `?day=yyyymmdd` test override (parsed once), 0 = none */
+let dayParam = -1;
+
 /** local calendar day as yyyymmdd (`?day=20261107` overrides for tests) */
 export function todayKey(): number {
-  try {
-    const q = new URLSearchParams(location.search).get("day");
-    const n = q ? parseInt(q, 10) : NaN;
-    if (n > 19000101 && n < 30000101) return n;
-  } catch {
-    /* no location */
+  if (dayParam < 0) {
+    dayParam = 0;
+    try {
+      const q = new URLSearchParams(location.search).get("day");
+      const n = q ? parseInt(q, 10) : NaN;
+      if (n > 19000101 && n < 30000101) dayParam = n;
+    } catch {
+      /* no location */
+    }
   }
+  if (dayParam > 0) return dayParam;
   const d = new Date();
   return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
 }
+
+const NONE: MissionDone[] = [];
 
 /** milliseconds until the next local midnight (daily reset) */
 export function msToReset(): number {
@@ -279,7 +288,7 @@ class MissionTracker {
         return Math.max(0, bestCurseAny());
       case "heroes": {
         let n = 0;
-        for (const k of Object.keys(d.counters)) if (k.startsWith("win:") && d.counters[k] > 0) n++;
+        for (const k in d.counters) if (k.startsWith("win:") && d.counters[k] > 0) n++;
         return n;
       }
       default:
@@ -354,32 +363,32 @@ class MissionTracker {
    */
   check(): MissionDone[] {
     const d = Meta.data;
-    const fresh: MissionDone[] = [];
+    // allocation-free unless something completes (runs a few times a second in play)
+    let fresh: MissionDone[] | null = null;
     for (const m of MISSIONS) {
       if (d.missionsDone.includes(m.id) || this.value(m.stat) < m.goal) continue;
       d.missionsDone.push(m.id);
       if (m.reward.weapon) Meta.unlockWeapon(m.reward.weapon);
       if (m.reward.hero) Meta.grantHero(m.reward.hero);
-      fresh.push({ def: m, daily: false });
+      (fresh ??= []).push({ def: m, daily: false });
     }
     for (const m of this.today()) {
       if (d.dailyDone.includes(m.id) || this.dailyValue(m.stat) < m.goal) continue;
       d.dailyDone.push(m.id);
-      fresh.push({ def: m, daily: true });
+      (fresh ??= []).push({ def: m, daily: true });
     }
-    if (fresh.length) {
-      Meta.save();
-      for (const f of fresh) {
-        if (this.active || G.state === "victory" || G.state === "gameover") this.runDone.push(f);
-        G.events?.emit("missionComplete", {
-          id: f.def.id,
-          name: f.def.name,
-          daily: f.daily,
-          gold: f.def.reward.gold,
-          weapon: f.def.reward.weapon,
-          hero: f.def.reward.hero,
-        });
-      }
+    if (!fresh) return NONE;
+    Meta.save();
+    for (const f of fresh) {
+      if (this.active || G.state === "victory" || G.state === "gameover") this.runDone.push(f);
+      G.events?.emit("missionComplete", {
+        id: f.def.id,
+        name: f.def.name,
+        daily: f.daily,
+        gold: f.def.reward.gold,
+        weapon: f.def.reward.weapon,
+        hero: f.def.reward.hero,
+      });
     }
     return fresh;
   }
