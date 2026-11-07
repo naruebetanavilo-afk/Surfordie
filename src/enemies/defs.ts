@@ -220,6 +220,7 @@ export const ENEMY_DEFS: EnemyDef[] = [
     hpBarY: 1.75,
     color: "#8cbbe0",
     anim: { armRaise: 1.3, armAmp: 0.15, legAmp: 0.45, sway: 0.07 },
+    capacity: 420,
     coinChance: 0.05,
     build: buildIceZombie,
     update: iceZombieUpdate,

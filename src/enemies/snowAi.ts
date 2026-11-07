@@ -168,7 +168,7 @@ export function impUpdate(em: EnemyManager, i: number, dt: number): boolean {
         flight: 0.9 + Math.min(td, 10) * 0.035,
         splash: 1.05,
         chill: 1.3,
-        frost: 2.2,
+        frost: 1.6,
         y0: 1.0 * em.scale[i],
       });
       if (ok) G.audio.sfx("throw", { vol: 0.6, pitch: 1.2 });

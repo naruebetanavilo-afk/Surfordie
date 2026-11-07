@@ -189,11 +189,11 @@ function lanesStep(em: EnemyManager, i: number, m: BossMemo, dt: number): boolea
     const a = m.angle + laneOffset(k, m.chain);
     const sx = Math.sin(a);
     const sz = Math.cos(a);
-    // spikes every 0.75 units of newly covered lane
-    for (let d = Math.ceil(prev / 0.75) * 0.75; d < m.travelled; d += 0.75) {
+    // a chunky spike every 0.6 units of newly covered lane
+    for (let d = Math.ceil(prev / 0.6) * 0.6; d < m.travelled; d += 0.6) {
       if (d < 0.9) continue;
-      const j = (Math.random() - 0.5) * 0.5;
-      IceFx.spike(m.ox + sx * d + sz * j, m.oz + sz * d - sx * j, 1.0 + Math.random() * 0.45, 1.25, 0, 0.3);
+      const j = (Math.random() - 0.5) * 0.6;
+      IceFx.spike(m.ox + sx * d + sz * j, m.oz + sz * d - sx * j, 1.3 + Math.random() * 0.5, 1.3, 0, 0.35);
     }
     if (!m.hitDone) {
       const rx = p.x - m.ox;
