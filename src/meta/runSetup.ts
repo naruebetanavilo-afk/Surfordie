@@ -95,7 +95,8 @@ export function maxCurse(stageId: string): number {
 /** highest tier won on any stage, -1 when never won */
 export function bestCurseAny(): number {
   let best = -1;
-  for (const k in Meta.data.curseCleared) best = Math.max(best, bestCurse(k));
+  // known stages only (a hand-edited save may carry junk ids)
+  for (let i = 0; i < STAGES.length; i++) best = Math.max(best, bestCurse(STAGES[i].id));
   return best;
 }
 

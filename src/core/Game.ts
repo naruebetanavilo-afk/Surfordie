@@ -299,7 +299,9 @@ export class Game {
     const em = G.enemies;
     let fx = 0;
     let fz = 0;
-    em.queryCircle(p.x, p.z, 5, (i) => {
+    // a hero whose start weapon burns around them (chef's fire ring) lets the horde come close
+    const fleeR = p.hero.startWeapon === "aura" ? 1.6 : 5;
+    em.queryCircle(p.x, p.z, fleeR, (i) => {
       const dx = p.x - em.x[i];
       const dz = p.z - em.z[i];
       const d2 = dx * dx + dz * dz + 0.1;
