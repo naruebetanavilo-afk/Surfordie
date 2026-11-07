@@ -13,23 +13,18 @@ import { choiceKey, type Choice, type LevelUpAction } from "../weapons/WeaponSys
 import { recommend } from "../weapons/recommend";
 import { luIcon, luShopIcon, type LevelUpGlyph } from "./levelupIcons";
 import { AutoChip } from "./autoChip";
+import type { RunSummary } from "../core/Game";
+import { el, img, btn, setLabel, pulse } from "./dom";
+import { MetaScreens, heroLocked, progressText, type ScreenCtx } from "./metaScreens";
+import { RunSetupPanel } from "./runSetupUi";
+import { MissionToast } from "./missionToast";
+import { Missions, unlockSource } from "../meta/missions";
+import { stageDef, syncMenuStage } from "../meta/runSetup";
+import { curseColor, curseName, curseMods } from "../meta/curse";
+import { stageIcon } from "./icons";
+import { STAGES } from "../stages/stages";
 import "./levelup.css";
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, parent?: HTMLElement, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  if (parent) parent.appendChild(e);
-  return e;
-}
-
-function img(cls: string, parent: HTMLElement, src: string): HTMLImageElement {
-  const i = el("img", cls, parent);
-  i.alt = "";
-  i.draggable = false;
-  i.src = src;
-  return i;
-}
+import "./meta.css";
 
 /** icon inside a frame with a spinning accent glow (badge can sit outside the frame) */
 function framedIcon(parent: HTMLElement, cls: string, src: string): HTMLDivElement {
@@ -38,27 +33,6 @@ function framedIcon(parent: HTMLElement, cls: string, src: string): HTMLDivEleme
   el("i", "icon-spin", frame);
   img("", frame, src);
   return box;
-}
-
-/** button with an optional glyph and a label span */
-function btn(parent: HTMLElement, cls: string, label: string, icon?: UiIconName): HTMLButtonElement {
-  const b = el("button", "btn " + cls, parent);
-  b.type = "button";
-  if (icon) img("btn-ico", b, uiIcon(icon, 64));
-  el("span", "btn-label", b, label);
-  return b;
-}
-
-function setLabel(b: HTMLButtonElement, text: string): void {
-  const l = b.querySelector(".btn-label");
-  if (l) l.textContent = text;
-}
-
-/** retrigger a one-shot CSS animation class */
-function pulse(e: HTMLElement, cls: string): void {
-  e.classList.remove(cls);
-  void e.offsetWidth;
-  e.classList.add(cls);
 }
 
 const QUALITY_NAMES = { low: "ต่ำ", medium: "กลาง", high: "สูง" } as const;
@@ -90,11 +64,27 @@ export class Screens {
   private prev = { time: 0, kills: 0, level: 0 };
   /** in-play AUTO mode chip (under the HUD's pause button) */
   private autoChip: AutoChip;
+  /** in-play "ภารกิจสำเร็จ!" banner */
+  private missionToast: MissionToast;
+  /** stage picker, missions and codex screens */
+  private meta: MetaScreens;
+  private lastUpdate = performance.now();
 
   constructor(private ui: HTMLElement) {
     this.layer = el("div", "screens", ui);
     // below the modal layer: level-up / chest / pause screens cover it like the HUD
     this.autoChip = new AutoChip(ui, this.layer);
+    this.missionToast = new MissionToast(ui, this.layer);
+    const ctx: ScreenCtx = {
+      open: (cls) => this.open(cls),
+      head: (parent, title, onBack) => this.head(parent, title, onBack),
+      bankChip: (parent) => this.bankChip(parent),
+      later: (ms, fn) => this.later(ms, fn),
+      setKey: (fn) => {
+        this.onKey = fn;
+      },
+    };
+    this.meta = new MetaScreens(ctx);
     // persisted settings that live in Meta (quality is persisted by World)
     if (Meta.data.showFps) G.debug.showFps = true;
     window.addEventListener("keydown", (e) => {
@@ -136,9 +126,13 @@ export class Screens {
     this.timers.push(window.setTimeout(fn, ms));
   }
 
-  /** per-frame UI that lives outside the modals (AUTO chip). Called by Game every frame. */
+  /** per-frame UI that lives outside the modals (AUTO chip, mission toast). Called by Game every frame. */
   update(): void {
+    const now = performance.now();
+    const dt = Math.min(0.1, Math.max(0, (now - this.lastUpdate) / 1000));
+    this.lastUpdate = now;
     this.autoChip.update();
+    this.missionToast.update(dt);
   }
 
   /**
@@ -215,7 +209,11 @@ export class Screens {
       // Player.reset grants spawn invulnerability, which only ticks down in
       // update(); in the menu that would leave the hero blinking forever
       G.player.invuln = 0;
+      // the menu background follows the selected stage (World reads G.stageId)
+      syncMenuStage();
     }
+    // the date may have rolled over / an old save may already meet some goals
+    Missions.check();
 
     const top = el("div", "menu-top", s);
     const rec = el("div", "record-chip", top);
@@ -228,7 +226,16 @@ export class Screens {
       el("b", "", recTxt, "--:--");
       el("small", "", recTxt, "ยังไม่มีสถิติ");
     }
-    const bankVal = this.bankChip(top);
+    const topR = el("div", "menu-top-r", top);
+    const bankVal = this.bankChip(topR);
+    const gear = el("button", "btn icon-btn menu-gear", topR);
+    gear.type = "button";
+    gear.setAttribute("aria-label", "ตั้งค่า");
+    img("btn-ico", gear, uiIcon("gear", 64));
+    onTap(gear, () => {
+      G.audio.sfx("select");
+      this.showSettings(() => this.showMenu());
+    });
 
     const logo = el("div", "logo", s);
     const h1 = el("h1", "logo-title", logo);
@@ -244,7 +251,7 @@ export class Screens {
     const bottom = el("div", "menu-bottom", s);
     const pickBox = el("div", "hero-pick", bottom);
     el("div", "section-label", pickBox, "เลือกฮีโร่");
-    const list = el("div", "hero-list", pickBox);
+    const list = el("div", "hero-list" + (HEROES.length > 3 ? " n4" : ""), pickBox);
     const detail = el("div", "hero-detail", pickBox);
     const detailIco = el("img", "hero-detail-ico", detail);
     detailIco.alt = "";
@@ -255,10 +262,14 @@ export class Screens {
     ultIco.alt = "";
     const ultTxt = el("span", "", ultRow);
     const actions = el("div", "menu-actions", bottom);
+    // run setup: stage (opens the picker) + curse tier stepper; "เริ่มเกม" stays one tap away
+    new RunSetupPanel(actions, () => this.meta.showStages(() => this.showMenu()), (ms, fn) => this.later(ms, fn));
     const play = btn(actions, "primary big play-btn", "เริ่มเกม", "play");
     const cards = new Map<string, HTMLButtonElement>();
 
-    const locked = (h: HeroDef) => h.price > 0 && !Meta.isUnlocked(h.id);
+    const locked = (h: HeroDef) => heroLocked(h);
+    /** locked behind a mission rather than a price */
+    const missionLocked = (h: HeroDef) => locked(h) && !!h.unlock;
     const refreshPlay = () => {
       const h = HEROES.find((x) => x.id === this.selectedHero) ?? HEROES[0];
       detail.style.setProperty("--accent", h.color);
@@ -266,18 +277,30 @@ export class Screens {
       if (wd) detailIco.src = iconURL("w:" + wd.id, wd.icon);
       detailIco.style.display = wd ? "" : "none";
       detailTxt.textContent = h.desc;
+      detail.classList.toggle("req", missionLocked(h));
+      if (missionLocked(h)) {
+        const m = unlockSource("hero", h.id);
+        detailIco.src = uiIcon("lock", 64);
+        detailIco.style.display = "";
+        detailTxt.textContent = "";
+        el("b", "", detailTxt, m ? `ปลดล็อก: ภารกิจ "${m.name}"` : "ยังล็อกอยู่");
+        if (m) el("small", "", detailTxt, `${m.desc} (${progressText(m, Missions.progress(m, false))})`);
+      }
       const u = h.ultimate;
       ultRow.style.setProperty("--accent", u.color);
       ultIco.src = iconURL("ult:" + u.id, u.icon, 96);
       ultTxt.innerHTML = "";
       el("b", "", ultTxt, `ไม้ตาย: ${u.name}`);
       el("small", "", ultTxt, u.desc);
-      if (locked(h)) {
+      play.classList.remove("unlock", "disabled", "locked-hero");
+      if (missionLocked(h)) {
+        play.classList.add("disabled", "locked-hero");
+        setLabel(play, "ยังล็อกอยู่");
+      } else if (locked(h)) {
         play.classList.add("unlock");
         setLabel(play, `ปลดล็อก ${formatNum(h.price)}`);
         play.classList.toggle("disabled", Meta.data.gold < h.price);
       } else {
-        play.classList.remove("unlock", "disabled");
         setLabel(play, "เริ่มเกม");
       }
     };
@@ -321,6 +344,12 @@ export class Screens {
 
     onTap(play, () => {
       const h = HEROES.find((x) => x.id === this.selectedHero) ?? HEROES[0];
+      if (missionLocked(h)) {
+        G.audio.sfx("deny");
+        pulse(play, "shake");
+        pulse(detail, "swap");
+        return;
+      }
       if (locked(h)) {
         if (Meta.unlockHero(h.id, h.price)) {
           G.audio.sfx("coin");
@@ -342,14 +371,27 @@ export class Screens {
       Flow.startRun(h.id);
     });
 
-    const row = el("div", "menu-row", actions);
+    const row = el("div", "menu-row three", actions);
     onTap(btn(row, "violet", "ร้านค้า", "bag"), () => {
       G.audio.sfx("select");
       this.showShop();
     });
-    onTap(btn(row, "ghost", "ตั้งค่า", "gear"), () => {
+    const msBtn = btn(row, "teal", "ภารกิจ", "scroll");
+    const claimable = Missions.claimable();
+    if (claimable > 0) {
+      const badge = el("span", "menu-badge", msBtn, String(claimable));
+      badge.setAttribute("aria-label", `รับรางวัลได้ ${claimable} รายการ`);
+    }
+    onTap(msBtn, () => {
       G.audio.sfx("select");
-      this.showSettings(() => this.showMenu());
+      this.meta.showMissions(
+        () => this.showMenu(),
+        () => {},
+      );
+    });
+    onTap(btn(row, "ghost", "สมุดภาพ", "book"), () => {
+      G.audio.sfx("select");
+      this.meta.showCodex(() => this.showMenu());
     });
 
     this.onKey = (e) => {
@@ -1200,6 +1242,17 @@ export class Screens {
     stat("skull", formatNum(G.stats.kills));
     stat("star", `Lv.${G.player.level}`);
     stat("coin", formatNum(G.stats.gold));
+    // stage + curse tier of this run
+    const stage = stageDef(G.stageId) ?? STAGES[0];
+    const where = el("div", "pause-where", stats);
+    const sc = el("span", "res-chip", where);
+    sc.style.setProperty("--accent", stage.color);
+    img("", sc, stageIcon(stage.id, stage.color, Math.max(0, STAGES.indexOf(stage)), 96));
+    el("b", "", sc, stage.name);
+    const cc = el("span", "res-chip curse", where);
+    cc.style.setProperty("--accent", curseColor(G.curse));
+    img("", cc, uiIcon("curse", 64));
+    el("b", "", cc, curseName(G.curse));
 
     const section = (title: string, count: number, max: number, cls: string) => {
       const t = el("div", "sec-title " + cls, panel);
@@ -1263,13 +1316,9 @@ export class Screens {
   }
 
   // ================================================================ results
-  showResults(victory: boolean, goldEarned: number): void {
-    // lifetime records kept by the UI (Game already saved gold / best time / kills)
+  showResults(victory: boolean, goldEarned: number, summary?: RunSummary): void {
+    // Game.endRun already saved every record (gold, best time / kills / level, wins, stage + curse, missions)
     const md = Meta.data;
-    md.bestLevel = Math.max(md.bestLevel, G.player.level);
-    md.totalKills += G.stats.kills;
-    if (victory) md.wins++;
-    Meta.save();
 
     const s = this.open("results " + (victory ? "win" : "lose"));
     el("div", victory ? "burst-rays" : "lose-vignette", s);
@@ -1293,13 +1342,27 @@ export class Screens {
     img("res-hero", sub, iconURL("hero:" + hero.id, hero.portrait, 128));
     el("span", "", sub, victory ? `${hero.name} ฝ่าฝูงซอมบี้ได้สำเร็จ` : `${hero.name} ถูกฝูงซอมบี้รุมจนล้ม`);
 
+    // stage + curse tier of this run
+    const stage = stageDef(summary?.stageId ?? G.stageId) ?? STAGES[0];
+    const curse = summary?.curse ?? G.curse;
+    const where = el("div", "res-stage", head);
+    const sc = el("span", "res-chip", where);
+    sc.style.setProperty("--accent", stage.color);
+    img("", sc, stageIcon(stage.id, stage.color, Math.max(0, STAGES.indexOf(stage)), 96));
+    el("b", "", sc, stage.name);
+    const cc = el("span", "res-chip curse", where);
+    cc.style.setProperty("--accent", curseColor(curse));
+    img("", cc, uiIcon("curse", 64));
+    el("b", "", cc, curseName(curse));
+
     const grid = el("div", "res-stats", panel);
     const counters: { el: HTMLElement; to: number; fmt: (v: number) => string }[] = [];
-    const stat = (icon: UiIconName, label: string, to: number, fmt: (v: number) => string, record: boolean) => {
+    const stat = (icon: UiIconName, label: string, to: number, fmt: (v: number) => string, record: boolean, note?: string) => {
       const r = el("div", "res-stat", grid);
       img("res-ico", r, uiIcon(icon, 64));
       const v = el("b", "res-val", r, fmt(0));
       el("span", "res-lbl", r, label);
+      if (note) el("span", "res-bonus", r, note);
       if (record) el("span", "res-record", r, "สถิติใหม่!");
       counters.push({ el: v, to, fmt });
     };
@@ -1307,7 +1370,58 @@ export class Screens {
     stat("hourglass", "เวลารอด", G.time, (v) => formatTime(v), runs > 1 && G.time > this.prev.time);
     stat("skull", "สังหาร", G.stats.kills, (v) => formatNum(v), runs > 1 && G.stats.kills > this.prev.kills);
     stat("star", "เลเวล", G.player.level, (v) => String(Math.round(v)), runs > 1 && G.player.level > this.prev.level);
-    stat("coin", "ทองที่ได้", goldEarned, (v) => `+${formatNum(v)}`, false);
+    const goldBonus = Math.round((curseMods(curse).gold - 1) * 100);
+    stat("coin", "ทองที่ได้", goldEarned, (v) => `+${formatNum(v)}`, false, goldBonus > 0 ? `คำสาป +${goldBonus}%` : undefined);
+
+    // meta progression: curse record, unlocks, missions completed this run
+    if (summary) {
+      // most exciting first: new hero / weapon, new stage, curse record, then plain missions
+      type Item = { icon: string; text: string; small?: string; color: string; p: number };
+      const items: Item[] = [];
+      for (const m of summary.missions) {
+        const w = m.weapon ? weaponById(m.weapon) : undefined;
+        const h = m.hero ? HEROES.find((x) => x.id === m.hero) : undefined;
+        if (h) items.push({ icon: iconURL("hero:" + h.id, h.portrait, 128), text: `ปลดล็อกฮีโร่: ${h.name}!`, small: `ภารกิจ "${m.name}"`, color: "#8dff5a", p: 0 });
+        else if (w) items.push({ icon: iconURL("w:" + w.id, w.icon), text: `ปลดล็อกอาวุธ: ${w.name}!`, small: `ภารกิจ "${m.name}"`, color: "#8dff5a", p: 1 });
+        else items.push({ icon: uiIcon("scroll", 64), text: `${m.daily ? "ภารกิจประจำวัน" : "ภารกิจ"}สำเร็จ: ${m.name}`, small: "รับรางวัลที่เมนูภารกิจ", color: m.daily ? "#5ff0d0" : "#ffd23f", p: 6 });
+      }
+      for (const id of summary.newStages) {
+        const st = stageDef(id);
+        if (st) items.push({ icon: stageIcon(st.id, st.color, Math.max(0, STAGES.indexOf(st)), 96), text: `ปลดล็อกด่านใหม่: ${st.name}!`, color: st.color, p: 2 });
+      }
+      if (victory && summary.newBestCurse) {
+        items.push(
+          curse > 0
+            ? { icon: uiIcon("curse", 64), text: `ผ่านคำสาปสูงสุดใหม่: ${curseName(curse)}!`, small: stage.name, color: curseColor(curse), p: 3 }
+            : { icon: uiIcon("trophy", 64), text: `ชนะด่าน "${stage.name}" ครั้งแรก!`, color: "#ffd23f", p: 3 },
+        );
+      }
+      if (summary.unlockedCurse > 0) {
+        items.push({ icon: uiIcon("curse", 64), text: `ปลดล็อก${curseName(summary.unlockedCurse)}!`, small: "เลือกได้ที่เมนูก่อนเริ่มเกม • ทองมากขึ้น", color: curseColor(summary.unlockedCurse), p: 4 });
+      }
+      if (!summary.newBestCurse && summary.newBestTime && runs > 1) {
+        items.push({ icon: uiIcon("hourglass", 64), text: `รอดนานที่สุดในด่านนี้!`, small: stage.name, color: "#3de0ff", p: 5 });
+      }
+      items.sort((a, b) => a.p - b.p);
+      if (items.length) {
+        panel.classList.add("has-unl");
+        const box = el("div", "res-unlocks", panel);
+        // landscape phones share the right column with the damage list
+        const landscape = window.matchMedia?.("(orientation: landscape) and (max-height: 560px)").matches;
+        const cap = landscape && Object.keys(G.stats.damageBy).length > 2 ? 3 : 5;
+        const shown = items.length > cap ? cap - 1 : cap;
+        items.slice(0, shown).forEach((it, i) => {
+          const r = el("div", "res-unlock", box);
+          r.style.setProperty("--accent", it.color);
+          r.style.animationDelay = `${0.5 + i * 0.1}s`;
+          img("", r, it.icon);
+          const t = el("span", "", r);
+          el("b", "", t, it.text);
+          if (it.small) el("small", "", t, it.small);
+        });
+        if (items.length > shown) el("div", "res-more", box, `และอีก ${items.length - shown} รายการ`);
+      }
+    }
 
     // count-up animation
     const t0 = performance.now();

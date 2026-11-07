@@ -255,9 +255,213 @@ export type UiIconName =
   | "back"
   | "gem"
   | "shake"
-  | "gauge";
+  | "gauge"
+  // meta progression (missions, codex, stages, curse tiers)
+  | "curse"
+  | "scroll"
+  | "book"
+  | "map"
+  | "check"
+  | "burst"
+  | "evolve";
 
 const UI: Record<UiIconName, IconDraw> = {
+  curse(c, s) {
+    // skull wrapped in violet curse flames
+    c.beginPath();
+    c.moveTo(s * 0.5, s * 0.02);
+    c.quadraticCurveTo(s * 0.62, s * 0.2, s * 0.76, s * 0.12);
+    c.quadraticCurveTo(s * 0.74, s * 0.3, s * 0.9, s * 0.34);
+    c.quadraticCurveTo(s * 0.96, s * 0.72, s * 0.5, s * 0.92);
+    c.quadraticCurveTo(s * 0.04, s * 0.72, s * 0.1, s * 0.34);
+    c.quadraticCurveTo(s * 0.26, s * 0.3, s * 0.24, s * 0.12);
+    c.quadraticCurveTo(s * 0.38, s * 0.2, s * 0.5, s * 0.02);
+    c.closePath();
+    const fg = c.createLinearGradient(0, s * 0.02, 0, s * 0.92);
+    fg.addColorStop(0, "#ffb3f2");
+    fg.addColorStop(0.45, "#c35bff");
+    fg.addColorStop(1, "#5b1fb0");
+    fs(c, s, fg, 0.06);
+    UI.skull(withTransform(c, s * 0.2, s * 0.24, 0.6), s);
+    c.restore();
+    c.fillStyle = "#ff5cf0";
+    c.beginPath();
+    c.arc(s * 0.428, s * 0.522, s * 0.028, 0, Math.PI * 2);
+    c.arc(s * 0.572, s * 0.522, s * 0.028, 0, Math.PI * 2);
+    c.fill();
+    sparkle(c, s * 0.8, s * 0.22, s * 0.06, "#ffe1fb");
+  },
+  scroll(c, s) {
+    // mission scroll: parchment with check rows and a red seal
+    c.beginPath();
+    c.roundRect(s * 0.2, s * 0.14, s * 0.6, s * 0.72, s * 0.05);
+    fs(c, s, vgrad(c, s * 0.14, s * 0.86, "#fff6dc", "#f0cf8e"), 0.06);
+    for (const y of [0.14, 0.86]) {
+      c.beginPath();
+      c.roundRect(s * 0.13, s * (y - 0.06), s * 0.74, s * 0.12, s * 0.06);
+      fs(c, s, vgrad(c, s * (y - 0.06), s * (y + 0.06), "#e7b46a", "#a8692a"), 0.05);
+    }
+    c.lineWidth = s * 0.045;
+    for (let k = 0; k < 3; k++) {
+      const y = s * (0.33 + k * 0.15);
+      c.strokeStyle = k < 2 ? "#2fcf4a" : "rgba(22,13,36,0.35)";
+      c.beginPath();
+      c.moveTo(s * 0.29, y);
+      c.lineTo(s * 0.33, y + s * 0.04);
+      c.lineTo(s * 0.4, y - s * 0.04);
+      c.stroke();
+      c.strokeStyle = "rgba(22,13,36,0.45)";
+      c.beginPath();
+      c.moveTo(s * 0.46, y);
+      c.lineTo(s * 0.7, y);
+      c.stroke();
+    }
+    c.beginPath();
+    c.arc(s * 0.72, s * 0.74, s * 0.1, 0, Math.PI * 2);
+    fs(c, s, "#ff4f6a", 0.045);
+    star5(c, s * 0.72, s * 0.745, s * 0.05);
+    c.fillStyle = "#ffd6dc";
+    c.fill();
+  },
+  book(c, s) {
+    // open picture book (codex)
+    c.beginPath();
+    c.moveTo(s * 0.5, s * 0.26);
+    c.quadraticCurveTo(s * 0.3, s * 0.14, s * 0.08, s * 0.2);
+    c.lineTo(s * 0.08, s * 0.8);
+    c.quadraticCurveTo(s * 0.3, s * 0.74, s * 0.5, s * 0.86);
+    c.quadraticCurveTo(s * 0.7, s * 0.74, s * 0.92, s * 0.8);
+    c.lineTo(s * 0.92, s * 0.2);
+    c.quadraticCurveTo(s * 0.7, s * 0.14, s * 0.5, s * 0.26);
+    c.closePath();
+    fs(c, s, vgrad(c, s * 0.14, s * 0.86, "#b98aff", "#6a3fd0"), 0.06);
+    for (const sx of [-1, 1]) {
+      c.beginPath();
+      c.moveTo(s * 0.5, s * 0.3);
+      c.quadraticCurveTo(s * (0.5 + 0.17 * sx), s * 0.2, s * (0.5 + 0.36 * sx), s * 0.25);
+      c.lineTo(s * (0.5 + 0.36 * sx), s * 0.72);
+      c.quadraticCurveTo(s * (0.5 + 0.17 * sx), s * 0.68, s * 0.5, s * 0.78);
+      c.closePath();
+      fs(c, s, vgrad(c, s * 0.2, s * 0.78, "#ffffff", "#e3dcf5"), 0.045);
+    }
+    // a tiny portrait + lines on the pages
+    c.beginPath();
+    c.roundRect(s * 0.2, s * 0.32, s * 0.2, s * 0.18, s * 0.03);
+    fs(c, s, "#ffd23f", 0.035);
+    c.lineWidth = s * 0.035;
+    c.strokeStyle = "rgba(22,13,36,0.4)";
+    c.beginPath();
+    c.moveTo(s * 0.2, s * 0.6);
+    c.lineTo(s * 0.4, s * 0.62);
+    c.moveTo(s * 0.6, s * 0.36);
+    c.lineTo(s * 0.8, s * 0.34);
+    c.moveTo(s * 0.6, s * 0.48);
+    c.lineTo(s * 0.8, s * 0.47);
+    c.moveTo(s * 0.6, s * 0.6);
+    c.lineTo(s * 0.76, s * 0.6);
+    c.stroke();
+    sparkle(c, s * 0.84, s * 0.12, s * 0.07, "#fff3a6");
+  },
+  map(c, s) {
+    // folded treasure map with a red route and an X
+    c.beginPath();
+    c.moveTo(s * 0.08, s * 0.24);
+    c.lineTo(s * 0.36, s * 0.14);
+    c.lineTo(s * 0.64, s * 0.24);
+    c.lineTo(s * 0.92, s * 0.14);
+    c.lineTo(s * 0.92, s * 0.76);
+    c.lineTo(s * 0.64, s * 0.86);
+    c.lineTo(s * 0.36, s * 0.76);
+    c.lineTo(s * 0.08, s * 0.86);
+    c.closePath();
+    fs(c, s, vgrad(c, s * 0.14, s * 0.86, "#d6f5a8", "#7fc84a"), 0.06);
+    c.fillStyle = "rgba(22,13,36,0.14)";
+    c.beginPath();
+    c.moveTo(s * 0.36, s * 0.14);
+    c.lineTo(s * 0.64, s * 0.24);
+    c.lineTo(s * 0.64, s * 0.86);
+    c.lineTo(s * 0.36, s * 0.76);
+    c.closePath();
+    c.fill();
+    c.setLineDash([s * 0.05, s * 0.05]);
+    c.lineWidth = s * 0.04;
+    c.strokeStyle = "#ff4f6a";
+    c.beginPath();
+    c.moveTo(s * 0.2, s * 0.68);
+    c.quadraticCurveTo(s * 0.36, s * 0.36, s * 0.56, s * 0.52);
+    c.quadraticCurveTo(s * 0.7, s * 0.62, s * 0.72, s * 0.4);
+    c.stroke();
+    c.setLineDash([]);
+    c.lineWidth = s * 0.07;
+    c.strokeStyle = UI_INK;
+    c.beginPath();
+    c.moveTo(s * 0.66, s * 0.28);
+    c.lineTo(s * 0.8, s * 0.42);
+    c.moveTo(s * 0.8, s * 0.28);
+    c.lineTo(s * 0.66, s * 0.42);
+    c.stroke();
+    c.lineWidth = s * 0.035;
+    c.strokeStyle = "#ff4f6a";
+    c.stroke();
+  },
+  check(c, s) {
+    c.beginPath();
+    c.arc(s * 0.5, s * 0.5, s * 0.4, 0, Math.PI * 2);
+    fs(c, s, vgrad(c, s * 0.1, s * 0.9, "#b4ff7a", "#22b33a"), 0.07);
+    c.lineCap = "round";
+    c.lineJoin = "round";
+    c.lineWidth = s * 0.16;
+    c.strokeStyle = UI_INK;
+    c.beginPath();
+    c.moveTo(s * 0.3, s * 0.52);
+    c.lineTo(s * 0.45, s * 0.66);
+    c.lineTo(s * 0.72, s * 0.36);
+    c.stroke();
+    c.lineWidth = s * 0.08;
+    c.strokeStyle = "#ffffff";
+    c.stroke();
+  },
+  burst(c, s) {
+    // ultimate: 8-point starburst with a white-hot core
+    c.beginPath();
+    for (let i = 0; i < 16; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 8;
+      const r = i % 2 === 0 ? s * 0.45 : s * 0.22;
+      c.lineTo(s * 0.5 + Math.cos(a) * r, s * 0.5 + Math.sin(a) * r);
+    }
+    c.closePath();
+    const g = c.createRadialGradient(s * 0.5, s * 0.5, s * 0.04, s * 0.5, s * 0.5, s * 0.45);
+    g.addColorStop(0, "#ffffff");
+    g.addColorStop(0.35, "#ffe37a");
+    g.addColorStop(1, "#ff7a1f");
+    fs(c, s, g, 0.06);
+    c.beginPath();
+    c.arc(s * 0.5, s * 0.5, s * 0.12, 0, Math.PI * 2);
+    c.fillStyle = "#ffffff";
+    c.fill();
+  },
+  evolve(c, s) {
+    // gem rising on a golden arrow (weapon evolution)
+    c.beginPath();
+    c.moveTo(s * 0.5, s * 0.06);
+    c.lineTo(s * 0.86, s * 0.42);
+    c.lineTo(s * 0.64, s * 0.42);
+    c.lineTo(s * 0.64, s * 0.9);
+    c.lineTo(s * 0.36, s * 0.9);
+    c.lineTo(s * 0.36, s * 0.42);
+    c.lineTo(s * 0.14, s * 0.42);
+    c.closePath();
+    fs(c, s, vgrad(c, s * 0.06, s * 0.9, "#fff1a0", "#ff9a12"), 0.065);
+    c.beginPath();
+    c.moveTo(s * 0.5, s * 0.36);
+    c.lineTo(s * 0.62, s * 0.52);
+    c.lineTo(s * 0.5, s * 0.72);
+    c.lineTo(s * 0.38, s * 0.52);
+    c.closePath();
+    fs(c, s, vgrad(c, s * 0.36, s * 0.72, "#9cf6ff", "#2f8cff"), 0.045);
+    sparkle(c, s * 0.2, s * 0.2, s * 0.07);
+    sparkle(c, s * 0.82, s * 0.66, s * 0.06);
+  },
   coin(c, s) {
     const x = s / 2;
     const y = s / 2;
@@ -1049,4 +1253,116 @@ export function shopIcon(id: string, color: string, size = 96): string {
     draw(c, s);
     c.restore();
   }, size);
+}
+
+// ------------------------------------------------------------------ stages
+
+/**
+ * Generic stage art for the stage picker / results (works for any stage
+ * colour): a dusk sky tinted with the stage accent, two rows of hills, a
+ * tilted tombstone and a zombie hand rising from the ground. `variant`
+ * shifts the hills / moon so neighbouring stages differ even in one colour.
+ */
+export function stageArt(color: string, variant = 0): IconDraw {
+  return (c, s) => {
+    const r = s * 0.16;
+    const x0 = s * 0.04;
+    const w = s * 0.92;
+    c.save();
+    c.beginPath();
+    c.roundRect(x0, x0, w, w, r);
+    c.save();
+    c.clip();
+    // sky
+    c.fillStyle = vgrad(c, x0, s * 0.7, shade(color, -0.55), shade(color, 0.15));
+    c.fillRect(0, 0, s, s);
+    // moon
+    const mx = s * (0.7 - (variant % 3) * 0.18);
+    c.fillStyle = "rgba(255,250,220,0.95)";
+    c.beginPath();
+    c.arc(mx, s * 0.24, s * 0.1, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = shade(color, -0.3);
+    c.beginPath();
+    c.arc(mx + s * 0.05, s * 0.21, s * 0.085, 0, Math.PI * 2);
+    c.fill();
+    // far + near hills
+    const ph = (variant % 4) * 0.7;
+    c.fillStyle = shade(color, -0.35);
+    c.beginPath();
+    c.moveTo(0, s);
+    for (let i = 0; i <= 12; i++) c.lineTo((i / 12) * s, s * (0.58 + Math.sin(i * 0.9 + ph) * 0.05));
+    c.lineTo(s, s);
+    c.closePath();
+    c.fill();
+    c.fillStyle = vgrad(c, s * 0.62, s, shade(color, -0.1), shade(color, -0.5));
+    c.beginPath();
+    c.moveTo(0, s);
+    for (let i = 0; i <= 12; i++) c.lineTo((i / 12) * s, s * (0.72 + Math.sin(i * 0.7 + ph + 2) * 0.04));
+    c.lineTo(s, s);
+    c.closePath();
+    c.fill();
+    // tombstone
+    c.save();
+    c.translate(s * 0.32, s * 0.74);
+    c.rotate(-0.12);
+    c.beginPath();
+    c.moveTo(-s * 0.09, s * 0.04);
+    c.lineTo(-s * 0.09, -s * 0.12);
+    c.arc(0, -s * 0.12, s * 0.09, Math.PI, 0);
+    c.lineTo(s * 0.09, s * 0.04);
+    c.closePath();
+    fs(c, s, vgrad(c, -s * 0.21, s * 0.04, "#d9dcef", "#8f93b3"), 0.04);
+    c.strokeStyle = "rgba(22,13,36,0.55)";
+    c.lineWidth = s * 0.025;
+    c.beginPath();
+    c.moveTo(0, -s * 0.15);
+    c.lineTo(0, -s * 0.05);
+    c.moveTo(-s * 0.035, -s * 0.11);
+    c.lineTo(s * 0.035, -s * 0.11);
+    c.stroke();
+    c.restore();
+    // hand rising from the ground
+    c.save();
+    c.translate(s * 0.66, s * 0.8);
+    c.beginPath();
+    c.moveTo(-s * 0.04, s * 0.04);
+    c.lineTo(-s * 0.035, -s * 0.1);
+    c.lineTo(-s * 0.075, -s * 0.16);
+    c.lineTo(-s * 0.05, -s * 0.18);
+    c.lineTo(-s * 0.02, -s * 0.14);
+    c.lineTo(-s * 0.025, -s * 0.24);
+    c.lineTo(0, -s * 0.25);
+    c.lineTo(s * 0.008, -s * 0.15);
+    c.lineTo(s * 0.025, -s * 0.24);
+    c.lineTo(s * 0.05, -s * 0.23);
+    c.lineTo(s * 0.04, -s * 0.13);
+    c.lineTo(s * 0.065, -s * 0.18);
+    c.lineTo(s * 0.085, -s * 0.16);
+    c.lineTo(s * 0.04, -s * 0.06);
+    c.lineTo(s * 0.04, s * 0.04);
+    c.closePath();
+    fs(c, s, "#8fd47a", 0.03);
+    c.restore();
+    // dirt mound
+    c.fillStyle = shade(color, -0.6);
+    c.beginPath();
+    c.ellipse(s * 0.66, s * 0.84, s * 0.12, s * 0.035, 0, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+    // rim
+    c.lineWidth = s * 0.05;
+    c.strokeStyle = UI_INK;
+    c.stroke();
+    c.globalAlpha = 0.6;
+    c.lineWidth = s * 0.022;
+    c.strokeStyle = shade(color, 0.4);
+    c.stroke();
+    c.restore();
+  };
+}
+
+/** data URL of a stage's art tile */
+export function stageIcon(id: string, color: string, variant = 0, size = 96): string {
+  return iconURL(`stage:${id}:${color}`, stageArt(color, variant), size);
 }

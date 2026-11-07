@@ -251,9 +251,50 @@ export interface MetaData {
   autoPick: boolean;
   /** level-up decision time in seconds; 0 = unlimited */
   pickTimer: number;
+  // ---- meta progression (wave 2). Every field has a sanitize-friendly default.
+  /** save schema step: 0 = saved before meta progression existed (see migrate) */
+  metaVer: number;
+  /** weapon ids that may appear in level-up rolls (a hero's start weapon is always allowed) */
+  unlockedWeapons: string[];
+  /** stage picked in the run setup */
+  lastStage: string;
+  /** highest curse tier won, per stage id (missing = never won there) */
+  curseCleared: Record<string, number>;
+  /** curse tier picked in the run setup, per stage id */
+  curseSel: Record<string, number>;
+  /** best survival time in seconds, per stage id */
+  stageBest: Record<string, number>;
+  /** lifetime counters for missions: bosses, elites, ults, evos, chests, gold, "win:<hero>" ... */
+  counters: Record<string, number>;
+  /** permanent missions completed (rewards that unlock things are applied on completion) */
+  missionsDone: string[];
+  /** permanent missions whose gold reward was claimed */
+  missionsClaimed: string[];
+  /** local date (yyyymmdd) the daily progress below belongs to */
+  dailyDay: number;
+  /** today's daily counters (same keys as `counters`; "level" / "time" are per-run maxima) */
+  daily: Record<string, number>;
+  dailyDone: string[];
+  dailyClaimed: string[];
 }
 
 const KEY = "sfd.meta.v1";
+
+/** current save schema step (see Meta.migrate) */
+const META_VER = 1;
+
+/** weapons every new save starts with; the others are unlocked by missions */
+export const BASE_WEAPONS = ["slash", "orbit", "missile", "axe", "bomb"];
+
+/**
+ * Weapons and heroes that existed before meta progression: a save that had
+ * already played when the feature first loaded keeps all of them unlocked.
+ */
+const LEGACY_WEAPONS = ["slash", "orbit", "missile", "axe", "bomb", "lightning", "spikes", "aura"];
+const LEGACY_HEROES = ["knight", "mage", "ranger"];
+
+/** the only stage before stages existed: every legacy run was played there */
+const LEGACY_STAGE = "meadow";
 
 function defaults(): MetaData {
   return {
@@ -274,7 +315,27 @@ function defaults(): MetaData {
     tutorialDone: false,
     autoPick: false,
     pickTimer: PICK_TIMER_DEFAULT,
+    metaVer: 0,
+    unlockedWeapons: BASE_WEAPONS.slice(),
+    lastStage: LEGACY_STAGE,
+    curseCleared: {},
+    curseSel: {},
+    stageBest: {},
+    counters: {},
+    missionsDone: [],
+    missionsClaimed: [],
+    dailyDay: 0,
+    daily: {},
+    dailyDone: [],
+    dailyClaimed: [],
   };
+}
+
+/** add `id` to a string list once */
+function addOnce(list: string[], id: string): boolean {
+  if (list.includes(id)) return false;
+  list.push(id);
+  return true;
 }
 
 /**
@@ -311,6 +372,8 @@ function sanitize(parsed: unknown): MetaData {
 
 export const Meta = {
   data: defaults(),
+  /** true when this boot grandfathered an old save (tests / debugging) */
+  grandfathered: false,
   load(): void {
     try {
       const raw = localStorage.getItem(KEY);
@@ -318,6 +381,44 @@ export const Meta = {
     } catch {
       this.data = defaults();
     }
+    this.migrate();
+  },
+  /**
+   * One-time upgrade of saves written before meta progression. A save that
+   * already has runs keeps every weapon / hero that existed then (the player
+   * earned them by playing), and its old global records become the meadow's
+   * (the only stage back then). A fresh save starts with BASE_WEAPONS.
+   */
+  migrate(): void {
+    const d = this.data;
+    if (d.metaVer >= META_VER) return;
+    if (d.metaVer < 1 && d.runs > 0) {
+      this.grandfathered = true;
+      for (const id of LEGACY_WEAPONS) addOnce(d.unlockedWeapons, id);
+      for (const id of LEGACY_HEROES) addOnce(d.unlocked, id);
+      d.stageBest[LEGACY_STAGE] = Math.max(d.stageBest[LEGACY_STAGE] ?? 0, d.bestTime);
+      if (d.wins > 0) d.curseCleared[LEGACY_STAGE] = Math.max(d.curseCleared[LEGACY_STAGE] ?? 0, 0);
+    }
+    d.metaVer = META_VER;
+    this.save();
+  },
+  isWeaponUnlocked(id: string): boolean {
+    return this.data.unlockedWeapons.includes(id);
+  },
+  /** unlock a weapon for the level-up pool; true when it was locked before */
+  unlockWeapon(id: string): boolean {
+    return addOnce(this.data.unlockedWeapons, id);
+  },
+  /** unlock a hero (mission reward); true when it was locked before */
+  grantHero(id: string): boolean {
+    return addOnce(this.data.unlocked, id);
+  },
+  /** add to a lifetime mission counter */
+  count(key: string, v = 1): void {
+    if (v) this.data.counters[key] = (this.data.counters[key] ?? 0) + v;
+  },
+  counter(key: string): number {
+    return this.data.counters[key] ?? 0;
   },
   save(): void {
     try {
