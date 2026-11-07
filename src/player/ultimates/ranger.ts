@@ -109,6 +109,9 @@ class AxeTempest implements UltEffect {
   private ringT = 0;
   private soundT = 0;
   private readonly flying: Proj[] = [];
+  /** ring of reusable per-axe data (far more slots than axes alive at once) */
+  private readonly dataPool: AxeData[] = Array.from({ length: 256 }, () => ({ token: -1, turn: 0, size: 1 }));
+  private dataIdx = 0;
   private blur: SpriteBatch | null = null;
   private readonly move = (p: Proj, dt: number): boolean => {
     const d = p.data as AxeData;
@@ -222,7 +225,11 @@ class AxeTempest implements UltEffect {
     const p = G.player;
     const ca = Math.cos(a);
     const sa = Math.sin(a);
-    const data: AxeData = { token: this.token, turn, size: this.size };
+    const data = this.dataPool[this.dataIdx];
+    this.dataIdx = (this.dataIdx + 1) % this.dataPool.length;
+    data.token = this.token;
+    data.turn = turn;
+    data.size = this.size;
     const pr = G.projectiles.spawn({
       kind: KIND,
       x: p.x + ca * 0.6,

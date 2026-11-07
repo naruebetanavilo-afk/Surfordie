@@ -1,6 +1,6 @@
 import { G } from "../../core/G";
 import { hitEnemy, type HitOpts } from "../../combat/damage";
-import { VFX, col, SPARK_EMBER, SPARK_STAR, SPARK_GLOW, DECAL_CRACK, DECAL_SCORCH, DECAL_SHOCK, DECAL_GLOW } from "../../weapons/vfx";
+import { VFX, col, SPARK_EMBER, SPARK_STAR, DECAL_CRACK, DECAL_SCORCH, DECAL_SHOCK, DECAL_GLOW } from "../../weapons/vfx";
 import { iconBg } from "../../ui/icons";
 import { enemiesIn, HitOnce, easeOutCubic } from "./common";
 import type { UltCast, UltEffect, UltimateDef } from "./types";

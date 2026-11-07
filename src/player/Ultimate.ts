@@ -3,23 +3,34 @@ import { ENEMY_DEFS } from "../enemies/defs";
 import type { UltCast, UltEffect, UltimateDef } from "./ultimates/types";
 
 /**
- * Charge cost model (tuned with the autoplay bot, see the probe notes in the
- * work log): the horde's kill-xp rate grows ~10x over a run, so the cost of a
- * full meter grows with the run clock as well. Kills by the ultimate itself
- * and kills while it is running do not charge it.
+ * Charge cost model. The horde's kill-xp rate grows ~30x over a run (measured
+ * with the autoplay bot: ~0.8 xp/s at 0:30 with the start weapon, ~30 xp/s at
+ * 4:00 with a full build), so the cost of a full meter follows the run clock,
+ * fitted to a typical player's kill rate (1 xp/s @0:30, 3.5 @1:30, 8 @3:00,
+ * 15 @5:00, 22 @7:00, 32 @9:00) for one cast every ~40-60 s. A rolling
+ * average of the player's own kill rate puts a floor under the cost, so a
+ * very strong build still waits ~30 s. Kills by the ultimate itself and kills
+ * while it is running do not charge it.
  *
- *   need(t)   = NEED_BASE * (1 + t/60 * NEED_LIN + (t/60)^2 * NEED_QUAD) * (1 + NEED_PER_CAST * min(casts, 6))
+ *   need(t)   = max(NEED_BASE * (1 + m * NEED_LIN + m^2 * NEED_QUAD), rate * FLOOR_S)
+ *               * (1 + NEED_PER_CAST * min(casts, 6))          (m = minutes)
  *   per kill  = enemy xp (elite x10) / need     (boss kill: +BOSS_BONUS)
  *   trickle   = 1 / TRICKLE_S per second       (a fleeing player still gets one)
  *
- * `stats.ultCharge` (if a shop upgrade ever adds it) multiplies all gains.
+ * A run starts with START_CHARGE so the first cast (and the button) shows up
+ * within the first minute. `stats.ultCharge` (if a shop upgrade ever adds it)
+ * multiplies all gains.
  */
-const NEED_BASE = 60;
-const NEED_LIN = 1.15;
-const NEED_QUAD = 0.06;
+const NEED_BASE = 55;
+const NEED_LIN = 1.9;
+const NEED_QUAD = 0.2;
 const NEED_PER_CAST = 0.06;
+const FLOOR_S = 40;
+/** time constant (s) of the kill-rate average */
+const RATE_TAU = 20;
 const TRICKLE_S = 150;
 const BOSS_BONUS = 0.3;
+const START_CHARGE = 0.2;
 
 /** autoplay bot: wait this long after the meter fills before casting */
 const BOT_DELAY = 0.6;
@@ -46,6 +57,9 @@ export class Ultimate {
   private xpById: Map<string, number> | null = null;
   private hooked = false;
   private botWait = 0;
+  /** rolling average of xp-weighted kills per second, and this frame's kills */
+  private rate = 0;
+  private xpAcc = 0;
   private readonly cast: UltCast = { power: 1, area: 1, amount: 0, duration: 1 };
 
   /** meter full and nothing running */
@@ -66,7 +80,13 @@ export class Ultimate {
   /** xp-weighted kills needed for a full meter right now */
   need(): number {
     const m = G.time / 60;
-    return NEED_BASE * (1 + m * NEED_LIN + m * m * NEED_QUAD) * (1 + NEED_PER_CAST * Math.min(this.casts, 6));
+    const base = Math.max(NEED_BASE * (1 + m * NEED_LIN + m * m * NEED_QUAD), this.rate * FLOOR_S);
+    return base * (1 + NEED_PER_CAST * Math.min(this.casts, 6));
+  }
+
+  /** rolling xp-weighted kill rate (per second) */
+  get killRate(): number {
+    return this.rate;
   }
 
   /** create the effect objects of these ultimates now (boot shader prewarm) */
@@ -84,9 +104,11 @@ export class Ultimate {
     this.stopEffect();
     if (stopAll) for (const e of this.instances.values()) e.stop();
     this.def = def;
-    this.charge = 0;
+    this.charge = START_CHARGE;
     this.casts = 0;
     this.botWait = 0;
+    this.rate = 0;
+    this.xpAcc = 0;
     this.stat.killXp = 0;
     this.stat.kills = 0;
     this.stat.castAt.length = 0;
@@ -103,6 +125,9 @@ export class Ultimate {
 
   update(dt: number): void {
     if (!this.def) return;
+    // rate += (xpAcc / dt - rate) * dt / TAU
+    this.rate = Math.max(0, this.rate + (this.xpAcc - this.rate * dt) / RATE_TAU);
+    this.xpAcc = 0;
     if (this.effect) {
       this.activeT += dt;
       G.player.ultGlow = 1;
@@ -189,6 +214,7 @@ export class Ultimate {
       const xp = e.boss ? 0 : (this.xpById.get(e.typeId) ?? 1) * (e.elite ? 10 : 1);
       this.stat.killXp += xp;
       this.stat.kills++;
+      this.xpAcc += xp;
       if (this.effect) return;
       this.addCharge(xp / this.need() + (e.boss ? BOSS_BONUS : 0));
     });
