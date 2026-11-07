@@ -536,15 +536,16 @@ function buildChef(): THREE.Group {
     k.add(place(sph(0.06, 10, 8), 0.07 * s, 0.985, z, 0, 0, 0.35 * s, 1.5, 0.75, 0.7), hair, { bone: B.head });
     k.add(place(sph(0.032, 8, 6), 0.15 * s, 1.005, z - 0.035), hair, { bone: B.head });
   }
-  const tilt = -0.25;
-  k.add(place(cyl(0.255, 0.27, 0.17, 18), 0, 1.31, -0.04, tilt), coat, { bone: B.head, shadeBottom: 0.86 });
-  k.add(place(torus(0.262, 0.022, 5, 20), 0, 1.24, -0.02, Math.PI / 2 + tilt), coatShade, { bone: B.head });
+  // tilted back so the face stays visible from the high camera (like the mage's hat)
+  const tilt = -0.36;
+  k.add(place(cyl(0.25, 0.27, 0.16, 18), 0, 1.3, -0.07, tilt), coat, { bone: B.head, shadeBottom: 0.86 });
+  k.add(place(torus(0.262, 0.022, 5, 20), 0, 1.235, -0.04, Math.PI / 2 + tilt), coatShade, { bone: B.head });
   const puff: [number, number, number, number][] = [
-    [0, 1.56, -0.13, 0.2],
-    [-0.15, 1.5, -0.1, 0.15],
-    [0.15, 1.5, -0.1, 0.15],
-    [0, 1.5, 0.03, 0.15],
-    [0, 1.48, -0.25, 0.15],
+    [0, 1.52, -0.22, 0.185],
+    [-0.15, 1.47, -0.18, 0.14],
+    [0.15, 1.47, -0.18, 0.14],
+    [0, 1.48, -0.06, 0.13],
+    [0, 1.43, -0.33, 0.14],
   ];
   for (const [x, y, z, r] of puff) k.add(place(sph(r, 12, 10), x, y, z), coat, { bone: B.hatTip, shadeBottom: 0.88 });
 
