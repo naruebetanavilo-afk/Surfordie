@@ -178,6 +178,7 @@ export class Ultimate {
     G.overlay.screenFlash(def.flash, 0.5, 0.4);
     G.fx.shake(0.35);
     G.hud.ultCast(def);
+    G.events.emit("ultCast", { id: def.id, hero: p.hero.id });
     this.effect.start(c);
     return true;
   }
@@ -197,7 +198,7 @@ export class Ultimate {
   }
 
   private chargeMul(): number {
-    const m = (G.player.stats as { ultCharge?: number }).ultCharge;
+    const m = G.player.stats.ultCharge;
     return typeof m === "number" && m > 0 ? m : 1;
   }
 

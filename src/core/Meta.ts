@@ -180,6 +180,16 @@ export const SHOP: ShopUpgrade[] = [
     color: "#fff3a6",
     effect: (l) => `${l} ครั้ง`,
   },
+  {
+    id: "ultCharge",
+    name: "ชาร์จไม้ตาย",
+    desc: "เกจไม้ตายชาร์จเร็วขึ้น 8% ต่อระดับ",
+    maxLevel: 5,
+    price: (l) => Math.round(160 * Math.pow(1.7, l)),
+    apply: (s, l) => (s.ultCharge += 0.08 * l),
+    color: "#ffb347",
+    effect: (l) => pct(0.08 * l),
+  },
   // ---- level-up helpers: charges per run on the level-up screen (base 1 each).
   // They are not player stats: WeaponSystem reads Meta.level(id) at run start.
   {

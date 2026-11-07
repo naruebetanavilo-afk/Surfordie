@@ -808,6 +808,30 @@ export function prewarmUi(name: UiIconName, size = 64): void {
 // ------------------------------------------------------------------ shop
 
 const SHOP_DRAW: Record<string, IconDraw> = {
+  ultCharge(c, s) {
+    // charge ring around a burst star (the ultimate meter)
+    const h = s / 2;
+    c.lineCap = "round";
+    c.lineWidth = s * 0.13;
+    c.strokeStyle = UI_INK;
+    c.beginPath();
+    c.arc(h, h, s * 0.36, 0, Math.PI * 2);
+    c.stroke();
+    c.lineWidth = s * 0.07;
+    c.strokeStyle = "#ffb347";
+    c.beginPath();
+    c.arc(h, h, s * 0.36, -Math.PI / 2, Math.PI * 1.15);
+    c.stroke();
+    c.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const a = -Math.PI / 2 + (k * Math.PI) / 5;
+      const r = (k % 2 ? 0.1 : 0.24) * s;
+      c.lineTo(h + Math.cos(a) * r, h + Math.sin(a) * r);
+    }
+    c.closePath();
+    fs(c, s, vgrad(c, s * 0.26, s * 0.74, "#fff3a6", "#ff9f1a"), 0.05);
+    sparkle(c, s * 0.7, s * 0.24, s * 0.07);
+  },
   might(c, s) {
     UI.sword(c, s);
   },

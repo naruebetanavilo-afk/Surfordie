@@ -15,6 +15,8 @@ export interface GameEvents {
   pickup: { kind: string; value: number };
   /** director announcements, e.g. "ฝูงซอมบี้กำลังมา!" */
   announce: { text: string; color?: string };
+  /** the hero cast their ultimate */
+  ultCast: { id: string; hero: string };
 }
 
 type Handler<T> = (payload: T) => void;

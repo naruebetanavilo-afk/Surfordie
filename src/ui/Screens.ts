@@ -249,6 +249,11 @@ export class Screens {
     const detailIco = el("img", "hero-detail-ico", detail);
     detailIco.alt = "";
     const detailTxt = el("span", "", detail);
+    // the hero's ultimate (ไม้ตาย) under the perk line
+    const ultRow = el("div", "hero-ult", pickBox);
+    const ultIco = el("img", "hero-ult-ico", ultRow);
+    ultIco.alt = "";
+    const ultTxt = el("span", "", ultRow);
     const actions = el("div", "menu-actions", bottom);
     const play = btn(actions, "primary big play-btn", "เริ่มเกม", "play");
     const cards = new Map<string, HTMLButtonElement>();
@@ -261,6 +266,12 @@ export class Screens {
       if (wd) detailIco.src = iconURL("w:" + wd.id, wd.icon);
       detailIco.style.display = wd ? "" : "none";
       detailTxt.textContent = h.desc;
+      const u = h.ultimate;
+      ultRow.style.setProperty("--accent", u.color);
+      ultIco.src = iconURL("ult:" + u.id, u.icon, 96);
+      ultTxt.innerHTML = "";
+      el("b", "", ultTxt, `ไม้ตาย: ${u.name}`);
+      el("small", "", ultTxt, u.desc);
       if (locked(h)) {
         play.classList.add("unlock");
         setLabel(play, `ปลดล็อก ${formatNum(h.price)}`);
@@ -1308,8 +1319,9 @@ export class Screens {
     };
     this.rafs.push(requestAnimationFrame(tick));
 
+    const ultOf = (id: string) => HEROES.find((h) => h.ultimate.id === id)?.ultimate;
     const entries = Object.entries(G.stats.damageBy)
-      .filter(([id]) => weaponById(id))
+      .filter(([id]) => weaponById(id) || ultOf(id))
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6);
     if (entries.length) {
@@ -1319,16 +1331,18 @@ export class Screens {
       const total = entries.reduce((a, [, v]) => a + v, 0) || 1;
       const top = entries[0][1] || 1;
       entries.forEach(([id, v], i) => {
-        const d = weaponById(id)!;
+        const d = weaponById(id);
+        const u = d ? undefined : ultOf(id);
         const w = G.weapons.get(id);
-        const ev = w?.evolved && d.evolution;
+        const ev = d && w?.evolved && d.evolution;
         const row = el("div", "dmg-row", dmg);
-        row.style.setProperty("--accent", d.color);
+        row.style.setProperty("--accent", d ? d.color : u!.color);
         row.style.animationDelay = `${0.35 + i * 0.08}s`;
-        img("dmg-ico", row, iconURL((ev ? "e:" : "w:") + id, (ev && ev.icon) || d.icon));
+        if (d) img("dmg-ico", row, iconURL((ev ? "e:" : "w:") + id, (ev && ev.icon) || d.icon));
+        else img("dmg-ico", row, iconURL("ult:" + id, u!.icon, 96));
         const mid = el("div", "dmg-mid", row);
         const nm = el("div", "dmg-name", mid);
-        el("span", "", nm, ev ? ev.name : d.name);
+        el("span", "", nm, d ? (ev ? ev.name : d.name) : `ไม้ตาย: ${u!.name}`);
         el("small", "", nm, `${Math.round((v / total) * 100)}%`);
         const bar = el("div", "dmg-bar", mid);
         const fill = el("div", "dmg-fill", bar);

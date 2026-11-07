@@ -33,6 +33,8 @@ export interface PlayerStats {
   critMul: number;
   /** extra lives */
   revives: number;
+  /** ultimate charge speed multiplier */
+  ultCharge: number;
 }
 
 export function baseStats(): PlayerStats {
@@ -54,6 +56,7 @@ export function baseStats(): PlayerStats {
     critChance: 0.05,
     critMul: 1.8,
     revives: 0,
+    ultCharge: 1,
   };
 }
 

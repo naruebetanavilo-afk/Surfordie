@@ -133,6 +133,7 @@ export class Hud {
   private cutName: HTMLElement;
   /** HUD blocks that cover the playfield (top bar, kills/pause, slots, boss bars) */
   private bandEls: HTMLElement[] = [];
+  private autoChipEl: HTMLElement | null = null;
 
   private last: Record<string, string | number | boolean> = {};
   private lastRT = 0;
@@ -341,6 +342,14 @@ export class Hud {
   bandRects(out: Float32Array): number {
     if (this.root.classList.contains("hidden")) return 0;
     let n = 0;
+    // the AUTO chip is mounted by Screens (src/ui/autoChip.ts); pick it up lazily
+    if (!this.autoChipEl) {
+      const chip = document.querySelector<HTMLElement>(".auto-chip-wrap");
+      if (chip) {
+        this.autoChipEl = chip;
+        this.bandEls.push(chip);
+      }
+    }
     for (const e of this.bandEls) {
       if (n * 4 + 4 > out.length) break;
       const r = e.getBoundingClientRect();

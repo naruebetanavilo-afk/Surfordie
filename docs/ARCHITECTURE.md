@@ -135,6 +135,37 @@ the user's shake setting `G.fx.shakeScale`, localStorage `sfd.shake`),
 `hitStop(seconds, scale)`, `slowMo(seconds, scale)`. Full reference: the JSDoc at
 the top of `src/fx/Fx.ts`. Overlay: `G.overlay.screenFlash(color, strength, time)`.
 
+## Level-up systems
+
+- `recommend(choices)` (`src/weapons/recommend.ts`) scores the offered cards like a
+  good player (evolution > low-HP heal > evolution catalyst > levelling owned weapons
+  > new weapon early > strong passives > gold). It drives the "แนะนำ" badge, the
+  10 s timer pick, AUTO mode and the autoplay bot.
+- Level-up screen: decision timer (`Meta.data.pickTimer`, `Meta.pickSeconds()`,
+  0 = unlimited) picks the recommended card when it runs out; reroll / skip / banish
+  charges per run = 1 + shop level (`reroll`, `skip`, `banish`), see
+  `WeaponSystem.charges/banished/useCharge/banish/skipLevel` and
+  `rollChoices(count?, {exclude, avoid, anyKind})`.
+- AUTO mode (`Meta.data.autoPick`): no modal, `Game.autoLevelUp` applies one level
+  every 0.25 s; chests close by themselves. Toggle on the level-up screen, pause,
+  settings and the in-play chip (`src/ui/autoChip.ts`). `Screens.update()` runs
+  every frame.
+
+## Ultimates
+
+`G.player.ult` (`src/player/Ultimate.ts`): charge 0..1 from kills (weighted by
+enemy XP, cost grows with run time), `ready`, `tryCast()`, `reset()`. Each hero's
+`HeroDef.ultimate` (`src/player/ultimates/*`, README there) has a Thai name/desc,
+icon and effect. HUD button `.hud-ult` (bottom-right, `onTap`), Space on desktop.
+Emits `ultCast`. Shop upgrade `ultCharge` raises `stats.ultCharge`.
+
+## Run modifiers & stages
+
+`G.mods` (`RunMods`: hp, dmg, speed, density, gold) apply to every enemy spawn,
+the director's crowd size and coins; set them before `Flow.startRun`.
+`G.stageId` selects a `StageDef` (`src/stages/stages.ts`: timeline + world theme);
+the Director loads its timeline on reset.
+
 ## Audio
 
 `G.audio.sfx(name, {vol, pitch})` is safe to call every frame (throttled,
