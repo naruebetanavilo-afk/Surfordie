@@ -54,6 +54,8 @@ export class Player {
   x = 0;
   z = 0;
   velX = 0;
+  /** movement multiplier from status effects (frost chill); 1 = normal */
+  moveMul = 1;
   velZ = 0;
   /** unit vector of the last movement direction (for directional weapons) */
   faceX = 0;
@@ -146,6 +148,7 @@ export class Player {
     this.hero = heroById(heroId);
     this.x = this.z = 0;
     this.velX = this.velZ = 0;
+    this.moveMul = 1;
     this.faceX = 0;
     this.faceZ = 1;
     this.level = 1;
@@ -310,7 +313,7 @@ export class Player {
 
   update(dt: number): void {
     const inp = G.input;
-    const sp = this.stats.moveSpeed;
+    const sp = this.stats.moveSpeed * this.moveMul;
     const tx = inp.moveX * sp;
     const tz = inp.moveZ * sp;
     const k = damp(14, dt);

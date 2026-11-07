@@ -281,6 +281,27 @@
   font-size: 1em;
 }
 
+.hud-curse {
+  height: 1.9em;
+  --bg: #5a1f6e;
+}
+
+.hud-curse .chip-icon {
+  width: 1.85em;
+  height: 1.85em;
+  margin-left: -0.7em;
+}
+
+.hud-curse .chip-val {
+  font-size: 1em;
+  color: #ffb3ff;
+}
+
+.hud-portrait.chilled .hud-portrait-frame {
+  box-shadow: 0 0 0 0.18em #9fe8ff, 0 0 0.9em #8fd8ff;
+  filter: saturate(0.55) brightness(1.15) hue-rotate(-15deg);
+}
+
 .hud-pause {
   position: relative;
   width: 2.75em;

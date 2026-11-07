@@ -16,8 +16,12 @@ node scripts/smoke.mjs --seconds 20 --params "god=1"   # headless playtest
 Debug URL params: `?skipmenu=1` `autoplay=1` (bot plays, auto-picks upgrades)
 `god=1` (no damage) `fps=1` `t=300` (start at 5:00) `weapons=8` (all weapons at
 level 8) `hero=mage` `seed=7` `quality=low|medium|high`.
-`lineup=1` (frozen parade of every enemy type) `boss=bossBull|bossWitch|bossKing`
-(spawn that boss after 1.5 s) `wtest=bomb,axe&wlv=8&wevo=1` (weapon loadout).
+`lineup=1` (frozen parade of the current stage's enemy types)
+`boss=bossBull|bossWitch|bossKing|bossFrost` (spawn that boss after 1.5 s)
+`wtest=bomb,axe&wlv=8&wevo=1` (weapon loadout) `stage=snow` (force a stage)
+`curse=0..10` (force a curse tier; a win is recorded like a real one)
+`day=yyyymmdd` (pick the daily missions of that date) `hero=chef` bypasses
+the hero lock.
 `window.__game` exposes the global context in the browser.
 
 ## World conventions
@@ -162,9 +166,43 @@ Emits `ultCast`. Shop upgrade `ultCharge` raises `stats.ultCharge`.
 ## Run modifiers & stages
 
 `G.mods` (`RunMods`: hp, dmg, speed, density, gold) apply to every enemy spawn,
-the director's crowd size and coins; set them before `Flow.startRun`.
-`G.stageId` selects a `StageDef` (`src/stages/stages.ts`: timeline + world theme);
-the Director loads its timeline on reset.
+the director's crowd size and coins. `G.stageId` selects a `StageDef`
+(`src/stages/stages.ts`: timeline, events, world theme, `requires` for the
+unlock); the Director loads its timeline on reset. `Game.startRun` calls
+`applyRunSetup()` (`src/meta/runSetup.ts`) before `G.director.reset()`, which
+sets `G.stageId`, `G.curse` and `G.mods` from the menu selection (or the debug
+params). Nothing may overwrite them after that.
+
+Stages (details and roster in `src/stages/README.md`):
+- `meadow` ทุ่งหญ้าต้องสาป: the original timeline (`timeline.ts`).
+- `snow` สุสานหิมะ (`timelineSnow.ts`): unlocked by winning meadow once or
+  surviving 6:00 there. Enemies `frostWolf`, `iceZombie`, `snowImp`, `yeti`
+  (models `modelsSnow.ts`, AI `snowAi.ts`), final boss `bossFrost`
+  (`bossFrost.ts`), `blizzard` run events (`Weather`), boss events may carry
+  `hpMul`. Frost slows the hero via `chillPlayer()` (`src/enemies/chill.ts`)
+  → `Player.moveMul`; the HUD portrait turns icy while chilled.
+- World: `G.world.setTheme(id)` switches ground branch, decor set, fog,
+  lights, vignette and snowfall (`themes.ts`, `DecorSnow.ts`, `Snowfall.ts`);
+  the world follows `stageById(G.stageId).theme` by itself, menu included.
+- Ground marks (`marks.ts`) draw in at most 3 instanced draw calls.
+
+## Meta progression
+
+See `src/meta/README.md`.
+- Curse tiers 0..10 (`src/meta/curse.ts`): per tier +20 % enemy HP, +10 %
+  damage, small speed/crowd bumps, +25 % gold. Tier N+1 opens after winning
+  tier N on that stage (`Meta.data.curseCleared`, selection `curseSel`).
+  The HUD shows a curse chip when `G.curse > 0`.
+- Unlocks: new saves start with `BASE_WEAPONS` (slash, orbit, missile, axe,
+  bomb); lightning / spikes / aura and the chef hero (`HeroDef.unlock`) come
+  from missions. `WeaponSystem.weaponAllowed()` filters level-up rolls.
+  `Meta.migrate()` grandfathers old saves (runs > 0 keep everything).
+- Missions (`src/meta/missions.ts`): 18 achievements + 3 daily missions per
+  local date; emits `missionComplete` (in-run toast). `Game.endRun` owns
+  bestLevel / totalKills / wins, then stage records, then missions.
+- Menu: run setup (stage picker + curse stepper) above the play button,
+  missions screen, codex (สมุดภาพ); UI in `src/ui/runSetupUi.ts`,
+  `metaScreens.ts`, `missionToast.ts`, styles `meta.css`.
 
 ## Audio
 

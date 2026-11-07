@@ -2,11 +2,11 @@ import { G } from "../core/G";
 import { Weather } from "../world/Weather";
 
 /**
- * Player-side frost effects driven from the enemy side (no Player API yet):
+ * Player-side frost effects driven from the enemy side:
  *
  *  - chill: the hero moves slower for a moment (ice zombie hits, snowballs,
- *    frost breath, frost patches). Applied after Player.update() by giving
- *    back part of this frame's displacement, so stats are never touched.
+ *    frost breath, frost patches) through Player.moveMul, so velocity, the
+ *    walk animation and enemy aim leads all see the slowed speed.
  *  - blizzard wind: while `Weather` storms the hero drifts gently downwind.
  *
  * `updateFrost(dt)` runs from Director.update (right after the player moved).
@@ -51,13 +51,12 @@ export function updateFrost(dt: number): void {
   if (flashCd > 0) flashCd -= dt;
   if (p.dead) {
     chillT = 0;
+    chillMul = 1;
+    p.moveMul = 1;
     return;
   }
   if (chillT > 0) {
     chillT -= dt;
-    const k = 1 - chillMul;
-    p.x -= p.velX * dt * k;
-    p.z -= p.velZ * dt * k;
     fxT -= dt;
     if (fxT <= 0) {
       fxT = 0.11;
@@ -73,6 +72,7 @@ export function updateFrost(dt: number): void {
     }
     if (chillT <= 0) chillMul = 1;
   }
+  p.moveMul = chillMul;
   // blizzard: a gentle push downwind (well below the hero's speed)
   const s = Weather.storm;
   if (s > 0.01) {
@@ -88,4 +88,5 @@ export function resetFrost(): void {
   chillMul = 1;
   fxT = 0;
   flashCd = 0;
+  G.player.moveMul = 1;
 }

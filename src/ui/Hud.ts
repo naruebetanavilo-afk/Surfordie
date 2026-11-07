@@ -106,6 +106,8 @@ export class Hud {
   private clockBox: HTMLDivElement;
   private time: HTMLSpanElement;
   private kills: HTMLSpanElement;
+  private curseBox: HTMLDivElement;
+  private curseVal: HTMLSpanElement;
   private weaponRow: HTMLDivElement;
   private passiveRow: HTMLDivElement;
   private wSlots: SlotView[] = [];
@@ -190,6 +192,10 @@ export class Hud {
 
     // ---------------------------------------------------------- second row (right)
     const sub = el("div", "hud-sub", this.root);
+    // curse tier of this run (hidden at tier 0)
+    this.curseBox = el("div", "hud-curse chip hidden", sub);
+    img("chip-icon", this.curseBox, uiIcon("curse", 64));
+    this.curseVal = el("span", "chip-val", this.curseBox, "0");
     const kb = el("div", "hud-kills chip", sub);
     img("chip-icon", kb, uiIcon("skull", 64));
     this.kills = el("span", "chip-val", kb, "0");
@@ -375,6 +381,9 @@ export class Hud {
     this.portrait.src = iconURL("hero:" + h.id, h.portrait, 128);
     this.portraitBox.style.setProperty("--accent", h.color);
     this.name.textContent = h.name;
+    this.curseBox.classList.toggle("hidden", G.curse <= 0);
+    this.curseVal.textContent = String(G.curse);
+    this.curseBox.title = `คำสาป ${G.curse}`;
     const u = h.ultimate;
     this.ultIcon.src = iconURL("ult:" + u.id, u.icon, 128);
     this.ultBtn.style.setProperty("--ult", u.color);
@@ -418,6 +427,8 @@ export class Hud {
     if (this.changed("frozen", !playing)) this.root.classList.toggle("frozen", !playing);
 
     const p = G.player;
+    // frost chill: icy portrait while the hero is slowed
+    if (this.changed("chill", p.moveMul < 0.99)) this.portraitBox.classList.toggle("chilled", p.moveMul < 0.99);
     if (this.changed("lvl", p.level)) this.lvl.textContent = String(p.level);
     const xp = Math.floor(p.xp);
     const xpChanged = this.changed("xp", xp);

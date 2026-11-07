@@ -9,6 +9,7 @@ is held, or **Space** on desktop.
 | knight อัศวินถังเหล็ก | ป้อมเหล็กถล่มปฐพี | leaps in a golden iron shell (2.6 s invulnerable), slams: crater + 3 ever wider shockwave rings (6.5 / 9.5 / 13 u), heavy damage, horde hurled back, slow | `knight.ts` |
 | mage จอมเวทฝึกหัด | พายุดาวหางมนตรา | ~2.7 s of 24+ comets on the densest groups on screen (dome + vortex scar each), giant finale comet | `mage.ts` |
 | ranger พรานขวานบิน | ระบำพายุขวาน | ~3.8 s whirlwind: rotating spiral arms of piercing spirit axes, closing ring of 18 axes | `ranger.ts` |
+| chef เชฟกระทะไฟ | พริกเพลิงพันเม็ด | ~2.6 s of ~38 lobbed fire chillies on crowds (splash + burning patches that slow), finale fire pillar + ring of fire rolling out to 7.5 u | `chef.ts` (damage source `ultChef`) |
 
 ## Runtime
 
