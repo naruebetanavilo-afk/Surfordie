@@ -17,6 +17,13 @@
   border-radius: 0.75em;
 }
 
+/* invisible hit area: at least 44 px */
+.btn.icon-btn.menu-gear::after {
+  content: "";
+  position: absolute;
+  inset: min(-0.2em, calc(1.225em - 22px));
+}
+
 .btn.icon-btn.menu-gear .btn-ico {
   width: 1.45em;
   height: 1.45em;
@@ -122,6 +129,7 @@
 .rs-curse {
   --accent: #7bd04a;
   position: relative;
+  font-size: inherit;
   min-width: 0;
   min-height: 3.35em;
   font-family: var(--font);
@@ -443,6 +451,7 @@
 .stage-card {
   --accent: #7bd04a;
   position: relative;
+  font-size: inherit;
   display: flex;
   align-items: center;
   gap: 0.7em;
@@ -799,7 +808,8 @@
 .ms-claim::after {
   content: "";
   position: absolute;
-  inset: -0.45em -0.4em;
+  /* hit area at least 44 px tall */
+  inset: min(-0.45em, calc(1em - 22px)) -0.4em;
 }
 
 .ms-claim:active {
@@ -839,6 +849,7 @@
 
 .cx-tile {
   --accent: #fff;
+  font-size: inherit;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -898,8 +909,10 @@
 
 .cx-name {
   max-width: 100%;
-  font-size: 0.64em;
-  line-height: 1.15;
+  font-size: 0.7em;
+  /* tall enough for stacked Thai marks (ื + ่); the negative margin keeps the tile height */
+  line-height: 1.5;
+  margin-block: -0.175em;
   text-align: center;
   text-shadow: var(--outline);
   overflow: hidden;
@@ -1012,7 +1025,8 @@
 /* ------------------------------------------------------------ in-run mission toast */
 .ms-toasts {
   position: absolute;
-  top: calc(var(--safe-top) + 5.4em);
+  /* below the weapon / passive slot rows and the first boss bar */
+  top: calc(var(--safe-top) + 13em);
   left: 50%;
   width: min(86vw, 20em);
   margin-left: max(-43vw, -10em);

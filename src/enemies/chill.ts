@@ -16,6 +16,19 @@ import { Weather } from "../world/Weather";
 
 let chillT = 0;
 let chillMul = 1;
+/** seconds left per strength tier: 0 = 50 % speed, 1 = 60 %, 2 = 65 % (weaker) */
+const tierT = new Float32Array(3);
+const TIER_MUL = [0.5, 0.6, 0.65];
+
+function tierOf(mul: number): number {
+  return mul <= 0.5 ? 0 : mul <= 0.6 ? 1 : 2;
+}
+
+/** strongest chill whose own timer is still running (a weak re-chill never extends a strong one) */
+function currentMul(): number {
+  for (let k = 0; k < 3; k++) if (tierT[k] > 0) return TIER_MUL[k];
+  return 1;
+}
 let fxT = 0;
 let flashCd = 0;
 
@@ -33,7 +46,9 @@ export function chillPlayer(time: number, mul = 0.6): void {
   if (p.dead || p.invuln > 0 || G.state !== "playing") return;
   const fresh = chillT <= 0;
   chillT = Math.max(chillT, time);
-  chillMul = fresh ? mul : Math.min(chillMul, mul);
+  const k = tierOf(mul);
+  tierT[k] = Math.max(tierT[k], time);
+  chillMul = currentMul();
   if (fresh) {
     G.fx.ring(p.x, p.z, { radius: 1.3, color: "#9fe8ff", life: 0.35, width: 0.3 });
     G.fx.particles.burst(p.x, 0.7, p.z, { count: 10, color: "#d8f6ff", speed: 3, life: 0.45, size: 0.22, up: 2, gravity: -5 });
@@ -52,11 +67,14 @@ export function updateFrost(dt: number): void {
   if (p.dead) {
     chillT = 0;
     chillMul = 1;
+    tierT.fill(0);
     p.moveMul = 1;
     return;
   }
   if (chillT > 0) {
     chillT -= dt;
+    for (let k = 0; k < 3; k++) if (tierT[k] > 0) tierT[k] -= dt;
+    chillMul = currentMul();
     fxT -= dt;
     if (fxT <= 0) {
       fxT = 0.11;
@@ -70,7 +88,10 @@ export function updateFrost(dt: number): void {
         gravity: -1.5,
       });
     }
-    if (chillT <= 0) chillMul = 1;
+    if (chillT <= 0) {
+      chillMul = 1;
+      tierT.fill(0);
+    }
   }
   p.moveMul = chillMul;
   // blizzard: a gentle push downwind (well below the hero's speed)
@@ -86,6 +107,7 @@ export function updateFrost(dt: number): void {
 export function resetFrost(): void {
   chillT = 0;
   chillMul = 1;
+  tierT.fill(0);
   fxT = 0;
   flashCd = 0;
   G.player.moveMul = 1;

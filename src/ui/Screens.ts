@@ -40,8 +40,6 @@ type Quality = keyof typeof QUALITY_NAMES;
 
 /** guard against accidental taps right after a modal opens (ms) */
 const TAP_GUARD = 320;
-/** level-up: S / A double as movement keys, so they wait a little longer */
-const MOVE_KEY_GUARD = 650;
 /** chests close by themselves this long after the reveal (ms): AUTO mode / normal */
 const CHEST_AUTO_CLOSE = 1500;
 const CHEST_IDLE_CLOSE = 6000;
@@ -760,7 +758,7 @@ export class Screens {
       },
       (downAt) => picked || !tapOk(downAt),
     );
-    el("span", "lu-key", autoCtl.el, "A");
+    el("span", "lu-key", autoCtl.el, "Q");
 
     const list = el("div", "card-list", s);
     const foot = el("div", "lu-actions", s);
@@ -867,7 +865,7 @@ export class Screens {
       const l = el("b", "lu-act-label", t, label);
       const c = el("small", "lu-act-cap", t, cap);
       const n = el("span", "lu-act-n", b);
-      el("span", "lu-key", b, a === "reroll" ? "R" : a === "skip" ? "S" : "B");
+      el("span", "lu-key", b, a === "reroll" ? "R" : a === "skip" ? "X" : "B");
       acts[a] = { b, n, label: l, cap: c };
       onTap(b, (_e, downAt) => {
         if (picked || busy || !tapOk(downAt)) return;
@@ -931,10 +929,15 @@ export class Screens {
     };
 
     const reroll = () => {
-      if (!ws.useCharge("reroll")) return deny("reroll");
+      if (ws.charges.reroll <= 0) return deny("reroll");
+      const keys = cur.map(choiceKey);
+      const next = ws.rollChoices(choices.length, { avoid: keys });
+      // a pool too small to offer anything new keeps the charge
+      if (next.length === cur.length && next.every((c) => keys.includes(choiceKey(c)))) return deny("reroll");
+      ws.useCharge("reroll");
       if (banishing) setBanish(false);
       G.audio.sfx("whoosh");
-      cur = ws.rollChoices(choices.length, { avoid: cur.map(choiceKey) });
+      cur = next;
       renderAll(0);
       resetTimer();
       syncActs();
@@ -1063,13 +1066,13 @@ export class Screens {
         case "Escape":
           if (banishing) setBanish(false);
           break;
-        // S / A are also movement keys: a key still being pressed for walking
-        // when the screen opened must not skip or toggle AUTO
-        case "KeyS":
-          if (since >= MOVE_KEY_GUARD) skip();
+        // skip / AUTO use keys that are not movement keys (WASD / arrows), so a
+        // walking player can never spend a skip or switch AUTO on by accident
+        case "KeyX":
+          skip();
           break;
-        case "KeyA":
-          if (since >= MOVE_KEY_GUARD) autoCtl.toggle();
+        case "KeyQ":
+          autoCtl.toggle();
           break;
       }
     };
@@ -1408,7 +1411,8 @@ export class Screens {
         const box = el("div", "res-unlocks", panel);
         // landscape phones share the right column with the damage list
         const landscape = window.matchMedia?.("(orientation: landscape) and (max-height: 560px)").matches;
-        const cap = landscape && Object.keys(G.stats.damageBy).length > 2 ? 3 : 5;
+        // portrait scrolls, so it lists everything; landscape keeps a cap
+        const cap = landscape ? (Object.keys(G.stats.damageBy).length > 2 ? 3 : 5) : items.length;
         const shown = items.length > cap ? cap - 1 : cap;
         items.slice(0, shown).forEach((it, i) => {
           const r = el("div", "res-unlock", box);

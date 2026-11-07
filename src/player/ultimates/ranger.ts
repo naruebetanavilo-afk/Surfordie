@@ -345,6 +345,8 @@ export const ultRanger: UltimateDef = {
   flash: "#fff2cc",
   icon: drawIcon,
   duration: 4.3,
+  // the last axes are still flying after the whirlwind
+  hudDuration: 5.0,
   invuln: 0.8,
   pose: "spin",
   create: () => new AxeTempest(),

@@ -367,6 +367,9 @@ function sanitize(parsed: unknown): MetaData {
       out[k] = v;
     }
   }
+  // fields this build does not know (a newer save loaded by an older shell) are
+  // kept opaque so the next save round-trips them instead of stripping them
+  for (const k of Object.keys(src)) if (!(k in out)) out[k] = src[k];
   return d;
 }
 

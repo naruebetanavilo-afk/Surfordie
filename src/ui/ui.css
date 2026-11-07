@@ -344,7 +344,8 @@
 /* weapon / passive slots */
 .hud-slots {
   position: absolute;
-  top: calc(var(--safe-top) + 5.15em);
+  /* clears the bottom of the curse / kill chips (.hud-sub ends at ~5.63em) */
+  top: calc(var(--safe-top) + 5.75em);
   left: calc(var(--safe-left) + 0.6em);
   display: flex;
   flex-direction: column;

@@ -198,6 +198,17 @@ function hiddenState(): boolean {
   return s === "menu" || s === "gameover" || s === "victory" || s === "boot";
 }
 
+
+/** per-batch instance counts of the current sync (reused, no per-frame allocation) */
+const SYNC_COUNTS = new Int32Array(3);
+
+/** upload only the first `n` floats of an instanced attribute */
+function flagRange(a: THREE.InstancedBufferAttribute, n: number): void {
+  a.clearUpdateRanges();
+  a.addUpdateRange(0, n);
+  a.needsUpdate = true;
+}
+
 class MarkSystem {
   private pool: Mark[] = [];
   private batches: Batch[] = [];
@@ -434,7 +445,8 @@ class MarkSystem {
   sync(): void {
     if (!this.scene) return;
     const hidden = hiddenState();
-    const counts = [0, 0, 0];
+    const counts = SYNC_COUNTS;
+    counts.fill(0);
     for (const m of this.pool) {
       if (!m.active) continue;
       // outside of a run the director is not ticking: drop leftovers instantly
@@ -495,15 +507,9 @@ class MarkSystem {
       im.clearUpdateRanges();
       im.addUpdateRange(0, n * 16);
       im.needsUpdate = true;
-      for (const [a, w] of [
-        [b.color, 3],
-        [b.data, 4],
-        [b.size, 2],
-      ] as const) {
-        a.clearUpdateRanges();
-        a.addUpdateRange(0, n * w);
-        a.needsUpdate = true;
-      }
+      flagRange(b.color, n * 3);
+      flagRange(b.data, n * 4);
+      flagRange(b.size, n * 2);
     }
   }
 

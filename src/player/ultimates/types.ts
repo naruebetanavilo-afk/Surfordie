@@ -44,8 +44,13 @@ export interface UltimateDef {
   flash: string;
   /** procedural icon (HUD button, menus) */
   icon: IconDraw;
-  /** seconds the effect lasts at duration x1 (HUD "active" ring) */
+  /** seconds the effect lasts at duration x1 (also the hero's channel pose length) */
   duration: number;
+  /**
+   * seconds the HUD "active" ring takes to drain at duration x1, when the effect
+   * keeps running after the pose (lingering projectiles / patches); default duration
+   */
+  hudDuration?: number;
   /** seconds of invulnerability granted on cast */
   invuln: number;
   /** hero body animation while active */

@@ -19,7 +19,7 @@ import { WeaponSystem } from "../weapons/WeaponSystem";
 import { WEAPONS } from "../weapons/registry";
 import { prewarmShaders } from "./prewarm";
 import { recommend } from "../weapons/recommend";
-import { applyRunSetup, recordRun, syncMenuStage } from "../meta/runSetup";
+import { applyRunSetup, recordQuitTime, recordRun, syncMenuStage } from "../meta/runSetup";
 import { Missions } from "../meta/missions";
 
 /** what the results screen shows besides the run stats (meta progression) */
@@ -50,6 +50,8 @@ export class Game {
   private fpsAcc = 0;
   private fpsFrames = 0;
   private levelUpDelay = 0;
+  /** the window lost focus (desktop) and has not regained it */
+  private unfocused = false;
   private botT = 0;
   private botAngle = 0;
   private endT = -1;
@@ -100,7 +102,11 @@ export class Game {
     });
     // desktop: losing window focus clears input, so pause instead of leaving the hero idle
     window.addEventListener("blur", () => {
+      this.unfocused = true;
       if (G.state === "playing" && !G.debug.autoplay) this.pause();
+    });
+    window.addEventListener("focus", () => {
+      this.unfocused = false;
     });
 
     // expose for tests / debugging
@@ -135,7 +141,10 @@ export class Game {
   startRun(heroId: string): void {
     G.screens.close();
     // a run restarted from the pause screen counts what it already did
-    if (Missions.running) Missions.abandonRun();
+    if (Missions.running) {
+      recordQuitTime(G.time);
+      Missions.abandonRun();
+    }
     // stage + curse tier from the run setup (G.stageId / G.curse / G.mods): before
     // the director loads the stage timeline and before anything spawns
     applyRunSetup();
@@ -171,8 +180,11 @@ export class Game {
   }
 
   toMenu(): void {
-    // quitting mid-run: kills etc. still count for missions
-    if (Missions.running) Missions.abandonRun();
+    // quitting mid-run: kills, survival time etc. still count
+    if (Missions.running) {
+      recordQuitTime(G.time);
+      Missions.abandonRun();
+    }
     G.state = "menu";
     syncMenuStage();
     G.hud.show(false);
@@ -200,6 +212,13 @@ export class Game {
     G.screens.close();
     G.state = "playing";
     this.last = performance.now();
+    // the chest's auto-collect countdown can resume while the window is unfocused
+    this.pauseIfUnfocused();
+  }
+
+  /** back in play but the window lost focus meanwhile (desktop): pause instead */
+  private pauseIfUnfocused(): void {
+    if (this.unfocused && !G.debug.autoplay) this.pause();
   }
 
   private endRun(victory: boolean): void {
@@ -250,6 +269,8 @@ export class Game {
       } else {
         G.state = "playing";
         this.last = performance.now();
+        // the 10 s timer can pick while the window is unfocused (input cleared): pause
+        this.pauseIfUnfocused();
       }
     };
     G.screens.showLevelUp(
@@ -396,6 +417,8 @@ export class Game {
         }
       }
       if (G.time >= RUN_LENGTH && !G.player.dead && G.state === "playing" && this.endT < 0) {
+        // clamp the frame overshoot so every 10:00 win records the same time
+        G.time = RUN_LENGTH;
         this.endT = G.time;
         this.endRun(true);
       }

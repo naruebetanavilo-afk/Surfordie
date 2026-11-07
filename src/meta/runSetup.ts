@@ -3,6 +3,9 @@ import { Meta } from "../core/Meta";
 import { STAGES, type StageDef } from "../stages/stages";
 import { CURSE_MAX, clampCurse, curseMods } from "./curse";
 
+/** run length in seconds (mirrors Director.RUN_LENGTH; kept local to avoid an import cycle) */
+const STAGE_RUN_LENGTH = 600;
+
 /**
  * Run setup: which stage and curse tier the next run uses, the per-stage
  * records (best time, highest tier won) and the unlock rules.
@@ -161,6 +164,16 @@ export interface RunRecord {
   newStages: StageDef[];
   /** survived longer than ever on this stage (not flagged on the first run there) */
   newBestTime: boolean;
+}
+
+/**
+ * a run quit (or restarted) mid-way still counts its survival time toward the
+ * stage record / unlock rule (Meta is saved by the caller)
+ */
+export function recordQuitTime(time: number): void {
+  const d = Meta.data;
+  const id = G.stageId;
+  d.stageBest[id] = Math.max(d.stageBest[id] ?? 0, Math.min(time, STAGE_RUN_LENGTH));
 }
 
 /** update the per-stage records at run end (Meta is saved by the caller) */

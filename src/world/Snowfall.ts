@@ -68,6 +68,9 @@ export class Snowfall {
   private fall = 0;
   private windX = 0;
   private windZ = 0;
+  /** current wrap box size (x / z), see update() */
+  private boxX = 0;
+  private boxZ = 0;
 
   constructor(quality: "low" | "medium" | "high") {
     const n = FLAKES[quality];
@@ -133,12 +136,22 @@ export class Snowfall {
     u.uFall.value = this.fall;
     u.uWind.value.set(this.windX, this.windZ);
     u.uTime.value = time;
-    u.uDensity.value = 0.4 + storm * 0.6;
+    // (the wrap box has 20 % headroom per axis, so a few more flakes are shown)
+    u.uDensity.value = 0.55 + storm * 0.45;
     u.uSize.value = 0.2 + storm * 0.04;
     u.uAlpha.value = 0.85 + storm * 0.1;
     // the far (-z) side of the view is larger: shift the box up-screen
     u.uCenter.value.set(cx, 0, cz - halfH * 0.12);
-    u.uBox.value.set(halfW * 2 + 6, 9, halfH * 1.9 + 6);
+    // the wrap box must stay put while the camera zooms (boss zoom, crowd zoom,
+    // menu blend): a changing box would shift every flake by a different amount.
+    // It only grows (with headroom) or shrinks after a big resize.
+    const needX = halfW * 2 + 6;
+    const needZ = halfH * 1.9 + 6;
+    if (needX > this.boxX || needZ > this.boxZ || needX < this.boxX * 0.55) {
+      this.boxX = needX * 1.2;
+      this.boxZ = needZ * 1.2;
+      u.uBox.value.set(this.boxX, 9, this.boxZ);
+    }
   }
 
   dispose(): void {

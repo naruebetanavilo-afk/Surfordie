@@ -373,6 +373,8 @@
 .lu-act-cap {
   font-size: 0.62em;
   font-weight: 700;
+  /* room for Thai marks above / below (overflow is hidden for the ellipsis) */
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -539,7 +541,8 @@
 .auto-chip::after {
   content: "";
   position: absolute;
-  inset: -0.5em -0.35em;
+  /* hit area at least 44 px tall (the chip is 1.95em) */
+  inset: min(-0.5em, calc(0.975em - 22px)) -0.35em;
 }
 
 .auto-chip-ico {
@@ -606,7 +609,7 @@
   }
 
   .lu-act {
-    min-height: 2.6em;
+    min-height: max(2.6em, 40px);
     padding-top: 0.2em;
     padding-bottom: 0.25em;
   }

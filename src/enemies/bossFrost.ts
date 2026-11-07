@@ -144,7 +144,8 @@ function startBreath(em: EnemyManager, i: number, m: BossMemo, wind: number): vo
   m.wind = wind;
   m.t = wind;
   m.angle = angleToPlayer(em, i);
-  m.len = m.enraged ? 0.62 : 0.5;
+  // cone half-angle (rad): narrow enough that a sideways dash escapes once it locks
+  m.len = m.enraged ? 0.46 : 0.38;
   setMark(m, Marks.cone(em.x[i], em.z[i], m.angle, BREATH_RANGE, m.len, m.wind, em.uid[i], TELE));
   G.audio.sfx("warn");
 }
@@ -314,8 +315,8 @@ export function frostUpdate(em: EnemyManager, i: number, dt: number): boolean {
       em.kx[i] = em.kz[i] = 0;
       m.t -= dt;
       const k = 1 - m.t / m.wind;
-      // track the hero for the first half, then lock (dodge window)
-      if (k < 0.55) {
+      // track the hero for the first 30 %, then lock (dodge window)
+      if (k < 0.3) {
         m.angle = angleToPlayer(em, i);
         Marks.move(m.mark!, m.markGen, em.x[i], em.z[i], m.angle);
       }
@@ -374,7 +375,8 @@ export function frostUpdate(em: EnemyManager, i: number, dt: number): boolean {
         spread: m.len * 0.8,
         drag: 1,
       });
-      if (!m.hitDone && inCone(em, i, m.angle, m.len)) {
+      // the gust hits in its first 0.2 s (when the warning vanishes), not for its whole tail
+      if (!m.hitDone && m.t > 0.45 && inCone(em, i, m.angle, m.len)) {
         p.takeDamage(em.dmg[i] * 1.3);
         chillPlayer(2.0, 0.5);
         m.hitDone = true;

@@ -34,9 +34,11 @@ interface WaveSpec {
 }
 
 const WAVES: WaveSpec[] = [
-  { at: SLAM_T, r: 6.5, T: 0.42, dmg: 30, kb: 42, color: GOLD },
-  { at: SLAM_T + 0.3, r: 9.5, T: 0.48, dmg: 30, kb: 48, color: TEAL },
-  { at: SLAM_T + 0.62, r: 13, T: 0.55, dmg: 52, kb: 60, color: GOLD },
+  // each wave hits an enemy once, so these are the knight's whole damage budget
+  // (kept near the other heroes' ultimates; its niche is the 2.6 s shell + push)
+  { at: SLAM_T, r: 6.5, T: 0.42, dmg: 70, kb: 42, color: GOLD },
+  { at: SLAM_T + 0.3, r: 9.5, T: 0.48, dmg: 70, kb: 48, color: TEAL },
+  { at: SLAM_T + 0.62, r: 13, T: 0.55, dmg: 125, kb: 60, color: GOLD },
 ];
 const RING_FROM = 0.06;
 

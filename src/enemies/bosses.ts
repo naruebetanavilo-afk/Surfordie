@@ -106,7 +106,13 @@ export function shove(em: EnemyManager, self: number, x: number, z: number, r: n
 const SUMMON_CAP = 700;
 
 /** spawn minions around (cx,cz) in a ring, with a puff for each */
+/** meadow bosses reused on another stage summon that stage's counterparts */
+const STAGE_SUMMONS: Record<string, Record<string, string>> = {
+  snow: { runner: "frostWolf", brute: "iceZombie" },
+};
+
 export function summon(id: string, count: number, cx: number, cz: number, radius: number, color: string, elite = false): void {
+  id = STAGE_SUMMONS[G.stageId]?.[id] ?? id;
   const em = G.enemies;
   const hpMul = G.director.hpScale(G.time);
   const dmgMul = G.director.dmgScale(G.time);

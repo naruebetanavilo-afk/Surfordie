@@ -42,7 +42,8 @@ export function scoreChoice(c: Choice): number {
     case "evolve":
       return 1000;
     case "heal":
-      return hpFrac < 0.3 ? 120 : hpFrac < 0.55 ? 45 : 4;
+      // nearly full HP: the heal restores almost nothing, so gold (1) wins
+      return hpFrac < 0.3 ? 120 : hpFrac < 0.55 ? 45 : hpFrac < 0.9 ? 4 : 0;
     case "gold":
       return 1;
     case "weapon": {

@@ -46,6 +46,21 @@ function stageArtURL(s: StageDef, size = 96): string {
   return stageIcon(s.id, s.color, stageIndex(s), size);
 }
 
+/** " • ปลดล็อก <name>" for missions that unlock a weapon / hero (touch has no tooltips) */
+function unlockSuffix(m: MissionDef): string {
+  const r = m.reward;
+  const names: string[] = [];
+  if (r.weapon) {
+    const w = WEAPONS.find((d) => d.id === r.weapon);
+    if (w) names.push(w.name);
+  }
+  if (r.hero) {
+    const h = HEROES.find((x) => x.id === r.hero);
+    if (h) names.push(h.name);
+  }
+  return names.length ? ` • ปลดล็อก ${names.join(", ")}` : "";
+}
+
 /** reward chips of a mission (gold + unlocks) */
 function rewardChips(parent: HTMLElement, m: MissionDef): void {
   const r = m.reward;
@@ -189,7 +204,7 @@ export class MetaScreens {
       const nm = el("div", "ms-name", body);
       el("span", "", nm, m.name);
       if (daily) el("span", "ms-tag", nm, "วันนี้");
-      el("div", "ms-desc", body, m.desc);
+      el("div", "ms-desc", body, m.desc + unlockSuffix(m));
       const bar = el("div", "ms-bar", body);
       const fill = el("i", "", bar);
       const num = el("small", "", bar);
@@ -372,7 +387,7 @@ export class MetaScreens {
         color: h.color,
         locked,
         desc: h.desc,
-        extra: [`ไม้ตาย: ${h.ultimate.name}`],
+        extra: [`ไม้ตาย: ${h.ultimate.name}`, h.ultimate.desc],
         lock: locked ? (h.price > 0 && !m ? { text: `ซื้อได้ที่เมนูด้วย ${formatNum(h.price)} ทอง`, v: 0, goal: 0 } : missionLock(m)) : undefined,
       };
     };

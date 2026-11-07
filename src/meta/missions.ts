@@ -324,13 +324,23 @@ class MissionTracker {
 
   /** reset the daily progress when the local date changed; returns today's key */
   rollDay(): number {
-    const day = todayKey();
     const d = Meta.data;
+    // a run that crosses midnight stays on the day it started (merge() rolls after it)
+    if (this.active && d.dailyDay) return d.dailyDay;
+    const day = todayKey();
     if (d.dailyDay !== day) {
+      // completed but unclaimed dailies of the old day are paid out, not lost
+      let owed = 0;
+      for (const id of d.dailyDone) {
+        if (d.dailyClaimed.includes(id)) continue;
+        owed += DAILY_POOL.find((m) => m.id === id)?.reward.gold ?? 0;
+      }
       d.dailyDay = day;
       d.daily = {};
       d.dailyDone = [];
       d.dailyClaimed = [];
+      if (owed > 0) d.gold += owed;
+      Meta.save();
     }
     return day;
   }

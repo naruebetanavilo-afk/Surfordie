@@ -60,6 +60,8 @@ export class Ultimate {
   /** seconds the running effect has played, and its nominal length */
   activeT = 0;
   activeDur = 1;
+  /** seconds the HUD ring takes to drain (>= activeDur for lingering effects) */
+  private hudDur = 1;
   /** tuning / test counters (read by probes through window.__game) */
   readonly stat = { killXp: 0, castAt: [] as number[], kills: 0 };
 
@@ -85,7 +87,7 @@ export class Ultimate {
 
   /** 0..1 progress of the running effect */
   get activeFrac(): number {
-    return this.effect ? Math.min(1, this.activeT / this.activeDur) : 0;
+    return this.effect ? Math.min(1, this.activeT / this.hudDur) : 0;
   }
 
   /** xp-weighted kills needed for a full meter right now */
@@ -170,6 +172,7 @@ export class Ultimate {
     c.duration = 0.85 + 0.15 * s.duration;
     this.activeT = 0;
     this.activeDur = def.duration * c.duration;
+    this.hudDur = (def.hudDuration ?? def.duration) * c.duration;
     this.effect = this.instance(def);
     p.invuln = Math.max(p.invuln, def.invuln);
     p.playUltPose(def.pose, this.activeDur, def.color);

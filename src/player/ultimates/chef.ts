@@ -485,6 +485,8 @@ export const ultChef: UltimateDef = {
   flash: "#ffe6cc",
   icon: drawIcon,
   duration: 3.4,
+  // chillies in flight + burning patches outlast the throw
+  hudDuration: 5.3,
   invuln: 0.8,
   pose: "channel",
   create: () => new ChiliStorm(),

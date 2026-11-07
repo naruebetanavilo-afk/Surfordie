@@ -1,7 +1,7 @@
 import { G } from "../core/G";
 import { STAGES } from "../stages/stages";
 import { CURSE_MAX, curseLines, curseColor, curseMods } from "../meta/curse";
-import { maxCurse, selectCurse, selectedCurse, selectedStage, stageUnlocked, syncMenuStage, bestCurse } from "../meta/runSetup";
+import { maxCurse, selectCurse, selectedCurse, selectedStage, stageUnlocked, syncMenuStage } from "../meta/runSetup";
 import { stageIcon, uiIcon } from "./icons";
 import { el, img, pulse, setText } from "./dom";
 import { onTap } from "./tap";
@@ -123,11 +123,10 @@ export class RunSetupPanel {
     this.hintT++;
     const stage = selectedStage();
     const idx = STAGES.indexOf(stage);
-    const open = STAGES.filter((s) => stageUnlocked(s)).length;
     this.stageBtn.style.setProperty("--accent", stage.color);
     this.stageArt.src = stageIcon(stage.id, stage.color, Math.max(0, idx), 96);
     setText(this.stageName, stage.name);
-    setText(this.stageSub, STAGES.length > 1 ? `ด่าน ${open}/${STAGES.length}` : "ด่าน");
+    setText(this.stageSub, STAGES.length > 1 ? `ด่าน ${idx + 1}/${STAGES.length}` : "ด่าน");
     this.stageBtn.classList.toggle("more", STAGES.length > 1);
 
     const t = selectedCurse(stage.id);
@@ -139,8 +138,8 @@ export class RunSetupPanel {
     this.minus.classList.toggle("off", t <= 0);
     this.plus.classList.toggle("off", t >= max);
     this.plus.classList.toggle("locked", t >= max && max < CURSE_MAX);
-    // a newly opened tier above the selection glows on "+"
-    this.plus.classList.toggle("new", t < max && max > bestCurse(stage.id));
+    // "+" glows only when the tier right above the selection is the newest one opened
+    this.plus.classList.toggle("new", t + 1 === max && max > 0);
     this.pips.forEach((p, k) => {
       const tier = k + 1;
       p.className = tier <= t ? "on" : tier <= max ? "open" : "";
