@@ -232,7 +232,8 @@ export function frostUpdate(em: EnemyManager, i: number, dt: number): boolean {
   followAura(em, i, m);
   if (bossesPassive()) return true;
   const p = G.player;
-  if (!m.enraged && em.hp[i] < em.maxHp[i] * 0.5) {
+  // enrage between attacks only, so no telegraph is ever left without its hit
+  if (!m.enraged && em.hp[i] < em.maxHp[i] * 0.5 && (m.state === CHASE || m.state === RECOVER)) {
     enrage(em, i, m);
     return true;
   }
@@ -270,8 +271,7 @@ export function frostUpdate(em: EnemyManager, i: number, dt: number): boolean {
           // enraged: two breaths in a row, the second one re-aimed
           m.volley = m.enraged ? 2 : 1;
           startBreath(em, i, m, m.enraged ? 0.85 : 1.05);
-        }
-        else if (pick <= 2) startLanes(em, i, m);
+        } else if (pick <= 2) startLanes(em, i, m);
         else {
           roar(em, i, m);
           summon("frostWolf", m.enraged ? 8 : 6, p.x, p.z, 7, "#9fe8ff");
