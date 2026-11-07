@@ -132,8 +132,7 @@ export class RunSetupPanel {
 
     const t = selectedCurse(stage.id);
     const max = maxCurse(stage.id);
-    const color = curseColor(t);
-    this.curseBox.style.setProperty("--accent", color);
+    this.curseBox.style.setProperty("--accent", curseColor(t));
     this.curseBox.classList.toggle("on", t > 0);
     setText(this.tierNum, String(t));
     setText(this.tierCap, t > 0 ? "คำสาป" : "ปกติ");
@@ -169,7 +168,6 @@ export class RunSetupPanel {
     const g = el("span", "rs-gold", m);
     img("", g, uiIcon("coin", 64));
     el("b", "", g, `ทอง +${Math.round((curseMods(t).gold - 1) * 100)}%`);
-    void color;
   }
 
   /** keep G.stageId (menu background) in sync after a selection elsewhere */

@@ -46,8 +46,11 @@ export class MissionToast {
 
   /** per frame (real dt) */
   update(dt: number): void {
-    if (G.state !== "playing") {
-      if (G.state === "menu" && (this.cur || this.queue.length)) this.clear();
+    const s = G.state;
+    if (s !== "playing") {
+      // modals (level-up, chest, pause) cover the banner and freeze its clock;
+      // the run is over on the end / menu screens (results list the missions)
+      if (s !== "levelup" && s !== "chest" && s !== "paused" && (this.cur || this.queue.length)) this.clear();
       return;
     }
     if (this.cur) {

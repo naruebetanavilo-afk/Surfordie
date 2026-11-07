@@ -29,16 +29,16 @@ const KIND = "sfdUltChili";
 const RAIN = 2.6;
 const MAX_PATCHES = 56;
 /** burning patch: life, tick interval, damage per tick (x power), slow */
-const PATCH_LIFE = 2.0;
+const PATCH_LIFE = 1.8;
 const PATCH_TICK = 0.3;
 const PATCH_DMG = 5;
 /** chilli splash damage (x power) and radius (x area) */
-const SPLASH_DMG = 24;
+const SPLASH_DMG = 30;
 const SPLASH_R = 1.7;
 /** finale ring: radius (x area), expansion time, damage (x power) */
 const RING_R = 7.5;
 const RING_T = 0.45;
-const RING_DMG = 60;
+const RING_DMG = 80;
 
 interface ChiliData {
   token: number;
@@ -153,7 +153,7 @@ class ChiliStorm implements UltEffect {
     this.c = c;
     this.t = 0;
     this.rain = RAIN * c.duration;
-    this.total = Math.round(30 + 3 * Math.min(6, c.amount));
+    this.total = Math.round(34 + 3 * Math.min(6, c.amount));
     this.launched = 0;
     this.token++;
     this.finaleDone = false;

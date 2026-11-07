@@ -6,7 +6,7 @@ import { WEAPONS } from "../weapons/registry";
 import type { WeaponDef } from "../weapons/types";
 import { passiveById } from "../upgrades/passives";
 import { formatNum, formatTime } from "../core/math";
-import { MISSIONS, Missions, msToReset, unlockSource, isMaxStat, type MissionDef } from "../meta/missions";
+import { MISSIONS, Missions, msToReset, unlockSource, type MissionDef } from "../meta/missions";
 import { bestCurse, selectStage, selectedStage, stageBestTime, stageRequirement, stageUnlocked, syncMenuStage, STAGE_UNLOCK_TIME } from "../meta/runSetup";
 import { curseColor, curseName } from "../meta/curse";
 import { iconURL, stageIcon, uiIcon, type UiIconName } from "./icons";
@@ -399,7 +399,6 @@ export class MetaScreens {
 
     const pick = (firstLocked ?? first) as { e: Entry; t: HTMLButtonElement } | null;
     if (pick) showDetail(pick.e, pick.t);
-    void isMaxStat;
     this.ctx.setKey((e) => {
       if (e.code === "Escape") onBack();
     });

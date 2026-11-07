@@ -1331,13 +1331,27 @@ export class Screens {
     img("res-hero", sub, iconURL("hero:" + hero.id, hero.portrait, 128));
     el("span", "", sub, victory ? `${hero.name} ฝ่าฝูงซอมบี้ได้สำเร็จ` : `${hero.name} ถูกฝูงซอมบี้รุมจนล้ม`);
 
+    // stage + curse tier of this run
+    const stage = stageDef(summary?.stageId ?? G.stageId) ?? STAGES[0];
+    const curse = summary?.curse ?? G.curse;
+    const where = el("div", "res-stage", head);
+    const sc = el("span", "res-chip", where);
+    sc.style.setProperty("--accent", stage.color);
+    img("", sc, stageIcon(stage.id, stage.color, Math.max(0, STAGES.indexOf(stage)), 96));
+    el("b", "", sc, stage.name);
+    const cc = el("span", "res-chip curse", where);
+    cc.style.setProperty("--accent", curseColor(curse));
+    img("", cc, uiIcon("curse", 64));
+    el("b", "", cc, curseName(curse));
+
     const grid = el("div", "res-stats", panel);
     const counters: { el: HTMLElement; to: number; fmt: (v: number) => string }[] = [];
-    const stat = (icon: UiIconName, label: string, to: number, fmt: (v: number) => string, record: boolean) => {
+    const stat = (icon: UiIconName, label: string, to: number, fmt: (v: number) => string, record: boolean, note?: string) => {
       const r = el("div", "res-stat", grid);
       img("res-ico", r, uiIcon(icon, 64));
       const v = el("b", "res-val", r, fmt(0));
       el("span", "res-lbl", r, label);
+      if (note) el("span", "res-bonus", r, note);
       if (record) el("span", "res-record", r, "สถิติใหม่!");
       counters.push({ el: v, to, fmt });
     };
@@ -1345,7 +1359,55 @@ export class Screens {
     stat("hourglass", "เวลารอด", G.time, (v) => formatTime(v), runs > 1 && G.time > this.prev.time);
     stat("skull", "สังหาร", G.stats.kills, (v) => formatNum(v), runs > 1 && G.stats.kills > this.prev.kills);
     stat("star", "เลเวล", G.player.level, (v) => String(Math.round(v)), runs > 1 && G.player.level > this.prev.level);
-    stat("coin", "ทองที่ได้", goldEarned, (v) => `+${formatNum(v)}`, false);
+    const goldBonus = Math.round((curseMods(curse).gold - 1) * 100);
+    stat("coin", "ทองที่ได้", goldEarned, (v) => `+${formatNum(v)}`, false, goldBonus > 0 ? `คำสาป +${goldBonus}%` : undefined);
+
+    // meta progression: curse record, unlocks, missions completed this run
+    if (summary) {
+      const items: { icon: string; text: string; small?: string; color: string }[] = [];
+      if (victory && summary.newBestCurse) {
+        items.push(
+          curse > 0
+            ? { icon: uiIcon("curse", 64), text: `ผ่านคำสาปสูงสุดใหม่: ${curseName(curse)}!`, small: stage.name, color: curseColor(curse) }
+            : { icon: uiIcon("trophy", 64), text: `ชนะด่าน "${stage.name}" ครั้งแรก!`, color: "#ffd23f" },
+        );
+      }
+      if (summary.unlockedCurse > 0) {
+        items.push({ icon: uiIcon("curse", 64), text: `ปลดล็อก${curseName(summary.unlockedCurse)}!`, small: "เลือกได้ที่เมนูก่อนเริ่มเกม • ทองมากขึ้น", color: curseColor(summary.unlockedCurse) });
+      }
+      for (const id of summary.newStages) {
+        const st = stageDef(id);
+        if (st) items.push({ icon: stageIcon(st.id, st.color, Math.max(0, STAGES.indexOf(st)), 96), text: `ปลดล็อกด่านใหม่: ${st.name}!`, color: st.color });
+      }
+      if (!summary.newBestCurse && summary.newBestTime && runs > 1) {
+        items.push({ icon: uiIcon("hourglass", 64), text: `รอดนานที่สุดในด่านนี้!`, small: stage.name, color: "#3de0ff" });
+      }
+      for (const m of summary.missions) {
+        const w = m.weapon ? weaponById(m.weapon) : undefined;
+        const h = m.hero ? HEROES.find((x) => x.id === m.hero) : undefined;
+        if (w) items.push({ icon: iconURL("w:" + w.id, w.icon), text: `ปลดล็อกอาวุธ: ${w.name}!`, small: `ภารกิจ "${m.name}"`, color: "#8dff5a" });
+        else if (h) items.push({ icon: iconURL("hero:" + h.id, h.portrait, 128), text: `ปลดล็อกฮีโร่: ${h.name}!`, small: `ภารกิจ "${m.name}"`, color: "#8dff5a" });
+        else items.push({ icon: uiIcon("scroll", 64), text: `${m.daily ? "ภารกิจประจำวัน" : "ภารกิจ"}สำเร็จ: ${m.name}`, small: "รับรางวัลที่เมนูภารกิจ", color: m.daily ? "#5ff0d0" : "#ffd23f" });
+      }
+      if (items.length) {
+        panel.classList.add("has-unl");
+        const box = el("div", "res-unlocks", panel);
+        // landscape phones share the right column with the damage list
+        const landscape = window.matchMedia?.("(orientation: landscape) and (max-height: 560px)").matches;
+        const cap = landscape && Object.keys(G.stats.damageBy).length > 2 ? 3 : 5;
+        const shown = items.length > cap ? cap - 1 : cap;
+        items.slice(0, shown).forEach((it, i) => {
+          const r = el("div", "res-unlock", box);
+          r.style.setProperty("--accent", it.color);
+          r.style.animationDelay = `${0.5 + i * 0.1}s`;
+          img("", r, it.icon);
+          const t = el("span", "", r);
+          el("b", "", t, it.text);
+          if (it.small) el("small", "", t, it.small);
+        });
+        if (items.length > shown) el("div", "res-more", box, `และอีก ${items.length - shown} รายการ`);
+      }
+    }
 
     // count-up animation
     const t0 = performance.now();
