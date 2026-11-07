@@ -152,11 +152,13 @@ export class EnemyManager {
     const px = G.player ? G.player.x : 0;
     const pz = G.player ? G.player.z : 0;
     this.yaw[i] = Math.atan2(px - x, pz - z);
-    const hp = def.hp * (opts.hpMul ?? 1) * (elite ? 8 : 1);
+    const hp = def.hp * (opts.hpMul ?? 1) * G.mods.hp * (elite ? 8 : 1);
     this.hp[i] = hp;
     this.maxHp[i] = hp;
-    this.speed[i] = def.speed * (opts.speedMul ?? 1) * (0.9 + Math.random() * 0.2);
-    this.dmg[i] = def.damage * (opts.dmgMul ?? 1) * (elite ? 1.5 : 1);
+    // run modifiers (difficulty tier / stage) apply to every spawn source
+    const mods = G.mods;
+    this.speed[i] = def.speed * (opts.speedMul ?? 1) * mods.speed * (0.9 + Math.random() * 0.2);
+    this.dmg[i] = def.damage * (opts.dmgMul ?? 1) * mods.dmg * (elite ? 1.5 : 1);
     const sc = def.scale * (opts.scaleMul ?? 1) * (elite ? 1.35 : 1);
     this.scale[i] = sc;
     this.radius[i] = def.radius * sc / def.scale;

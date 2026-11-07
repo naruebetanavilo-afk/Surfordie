@@ -4,7 +4,8 @@ import { Marks } from "../enemies/marks";
 import { resetHostile, warmUpHostile } from "../enemies/hostile";
 import { resetBosses, setBossesPassive } from "../enemies/bosses";
 import { startStampede, MODE_STAMPEDE } from "../enemies/ai";
-import { PHASES, EVENTS, type Phase, type RunEvent } from "./timeline";
+import { type Phase, type RunEvent } from "./timeline";
+import { stageById } from "../stages/stages";
 
 /** length of a full run in seconds; surviving this long = victory */
 export const RUN_LENGTH = 10 * 60;
@@ -54,8 +55,26 @@ export class Director {
   private lineup: number[] = [];
   private relocateT = 0;
 
+  /** scripted events of the current stage */
+  private events: RunEvent[] = [];
+  private cachedStage = "";
+
   constructor() {
-    this.cache = PHASES.map((phase) => {
+    this.cache = [];
+    this.loadStage();
+    G.events.on("bossKilled", () => {
+      this.bossAlive = Math.max(0, this.bossAlive - 1);
+      if (this.bossAlive === 0) this.setBossMood(false);
+    });
+  }
+
+  /** (re)build the spawn tables from the timeline of G.stageId */
+  private loadStage(): void {
+    const stage = stageById(G.stageId);
+    if (stage.id === this.cachedStage) return;
+    this.cachedStage = stage.id;
+    this.events = stage.events;
+    this.cache = stage.phases.map((phase) => {
       const ids: number[] = [];
       const weights: number[] = [];
       for (const [id, w] of Object.entries(phase.weights)) {
@@ -64,13 +83,10 @@ export class Director {
       }
       return { phase, ids, weights, elites: (phase.elites ?? []).map(enemyDefIndex) };
     });
-    G.events.on("bossKilled", () => {
-      this.bossAlive = Math.max(0, this.bossAlive - 1);
-      if (this.bossAlive === 0) this.setBossMood(false);
-    });
   }
 
   reset(): void {
+    this.loadStage();
     this.acc = 0;
     this.quiet = false;
     this.lineup.length = 0;
@@ -87,8 +103,8 @@ export class Director {
       dbgBoss = false;
     }
     while (
-      this.nextEvent < EVENTS.length &&
-      (EVENTS[this.nextEvent].t < t || (dbgBoss && t > 0 && EVENTS[this.nextEvent].t <= t + 0.01))
+      this.nextEvent < this.events.length &&
+      (this.events[this.nextEvent].t < t || (dbgBoss && t > 0 && this.events[this.nextEvent].t <= t + 0.01))
     )
       this.nextEvent++;
     this.eliteT = Math.max(120, t + 12);
@@ -155,7 +171,9 @@ export class Director {
     let n = ph.alive[0] + (ph.alive[1] - ph.alive[0]) * k;
     // give boss fights a little breathing room
     if (this.bossAlive > 0) n *= 0.8;
-    return Math.min(ALIVE_CAP, Math.floor(n));
+    // difficulty tiers may crowd the screen a bit more (bounded for performance)
+    const density = G.mods.density;
+    return Math.min(Math.round(ALIVE_CAP * Math.min(1.15, Math.max(1, density))), Math.floor(n * density));
   }
 
   update(dt: number): void {
@@ -173,8 +191,8 @@ export class Director {
       }
       return;
     }
-    while (this.nextEvent < EVENTS.length && EVENTS[this.nextEvent].t <= t) {
-      this.runEvent(EVENTS[this.nextEvent]);
+    while (this.nextEvent < this.events.length && this.events[this.nextEvent].t <= t) {
+      this.runEvent(this.events[this.nextEvent]);
       this.nextEvent++;
     }
     this.runPending(t);

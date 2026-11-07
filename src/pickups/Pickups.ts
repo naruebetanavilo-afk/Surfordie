@@ -374,7 +374,7 @@ export class Pickups {
         G.audio.sfx("xp");
         break;
       case "coin": {
-        const g = Math.max(1, Math.round(v * p.stats.greed));
+        const g = Math.max(1, Math.round(v * p.stats.greed * G.mods.gold));
         G.stats.gold += g;
         G.audio.sfx("coin");
         break;

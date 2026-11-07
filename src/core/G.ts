@@ -41,6 +41,25 @@ export interface DebugFlags {
   hero: string | null;
 }
 
+/**
+ * Per-run difficulty modifiers (difficulty tiers, stage rules). Applied to every
+ * enemy at spawn (EnemyManager.spawn), to the director's crowd size and to
+ * coin pickups. Set them before Flow.startRun; 1 = normal.
+ */
+export interface RunMods {
+  hp: number;
+  dmg: number;
+  speed: number;
+  /** multiplies the target number of living enemies (crowd size) */
+  density: number;
+  /** multiplies gold from coins */
+  gold: number;
+}
+
+export function defaultRunMods(): RunMods {
+  return { hp: 1, dmg: 1, speed: 1, density: 1, gold: 1 };
+}
+
 export interface GameContext {
   state: GameState;
   /** seconds of simulated run time (pauses excluded) */
@@ -53,6 +72,12 @@ export interface GameContext {
   timeScale: number;
   /** id of the hero chosen for this run */
   heroId: string;
+  /** id of the stage for this run (see src/stages/stages.ts) */
+  stageId: string;
+  /** difficulty tier for this run (0 = normal) */
+  curse: number;
+  /** run difficulty modifiers derived from stage + curse */
+  mods: RunMods;
   stats: RunStats;
   debug: DebugFlags;
 
@@ -83,6 +108,9 @@ export const G = {
   realTime: 0,
   timeScale: 1,
   heroId: "knight",
+  stageId: "meadow",
+  curse: 0,
+  mods: { hp: 1, dmg: 1, speed: 1, density: 1, gold: 1 },
   stats: { kills: 0, gold: 0, damageBy: {}, killsBy: {}, bossesKilled: 0, maxLevel: 1 },
   debug: { autoplay: false, god: false, skipMenu: false, showFps: false, startTime: 0, allWeapons: 0, hero: null },
   perf: { fps: 0, frameMs: 0, enemies: 0, particles: 0, drawCalls: 0 },
