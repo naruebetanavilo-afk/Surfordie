@@ -17,6 +17,11 @@ export interface GameEvents {
   announce: { text: string; color?: string };
   /** the hero cast their ultimate */
   ultCast: { id: string; hero: string };
+  /**
+   * a mission (src/meta/missions.ts) reached its goal. Unlock rewards
+   * (`weapon` / `hero` ids) are already applied; `gold` waits for the claim.
+   */
+  missionComplete: { id: string; name: string; daily: boolean; gold: number; weapon?: string; hero?: string };
 }
 
 type Handler<T> = (payload: T) => void;

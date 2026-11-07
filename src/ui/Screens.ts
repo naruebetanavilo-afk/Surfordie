@@ -13,6 +13,7 @@ import { choiceKey, type Choice, type LevelUpAction } from "../weapons/WeaponSys
 import { recommend } from "../weapons/recommend";
 import { luIcon, luShopIcon, type LevelUpGlyph } from "./levelupIcons";
 import { AutoChip } from "./autoChip";
+import type { RunSummary } from "../core/Game";
 import "./levelup.css";
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, parent?: HTMLElement, text?: string): HTMLElementTagNameMap[K] {
@@ -1263,13 +1264,9 @@ export class Screens {
   }
 
   // ================================================================ results
-  showResults(victory: boolean, goldEarned: number): void {
-    // lifetime records kept by the UI (Game already saved gold / best time / kills)
+  showResults(victory: boolean, goldEarned: number, summary?: RunSummary): void {
+    // Game.endRun already saved every record (gold, best time / kills / level, wins, stage + curse, missions)
     const md = Meta.data;
-    md.bestLevel = Math.max(md.bestLevel, G.player.level);
-    md.totalKills += G.stats.kills;
-    if (victory) md.wins++;
-    Meta.save();
 
     const s = this.open("results " + (victory ? "win" : "lose"));
     el("div", victory ? "burst-rays" : "lose-vignette", s);

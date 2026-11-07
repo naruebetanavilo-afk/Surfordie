@@ -109,6 +109,14 @@ export class WeaponSystem {
     return this.banished.size > 0 && this.banished.has(`${kind}:${id}`);
   }
 
+  /**
+   * Meta progression: a weapon may be offered when it is unlocked (missions)
+   * or it is the current hero's own starting weapon.
+   */
+  weaponAllowed(id: string): boolean {
+    return Meta.isWeaponUnlocked(id) || G.player?.hero.startWeapon === id;
+  }
+
   /** gold a skipped level-up pays (grows a little with run time, greed applies) */
   skipGold(): number {
     const base = 15 + 3 * Math.floor(Math.max(0, G.time) / 60);
@@ -329,7 +337,8 @@ export class WeaponSystem {
     }
     if (this.weapons.length < this.maxWeapons) {
       const nw = few ? 1.25 : 0.75;
-      for (const d of WEAPONS) if (!this.get(d.id)) add("weapon", d.id, nw, () => this.weaponChoice(d.id));
+      // locked weapons (meta progression) never enter the pool
+      for (const d of WEAPONS) if (!this.get(d.id) && this.weaponAllowed(d.id)) add("weapon", d.id, nw, () => this.weaponChoice(d.id));
     }
     for (const [id, l] of this.passives) {
       const d = passiveById(id)!;

@@ -19,6 +19,24 @@ import { WeaponSystem } from "../weapons/WeaponSystem";
 import { WEAPONS } from "../weapons/registry";
 import { prewarmShaders } from "./prewarm";
 import { recommend } from "../weapons/recommend";
+import { applyRunSetup, recordRun, syncMenuStage } from "../meta/runSetup";
+import { Missions } from "../meta/missions";
+
+/** what the results screen shows besides the run stats (meta progression) */
+export interface RunSummary {
+  stageId: string;
+  curse: number;
+  /** won a curse tier above this stage's previous best (or the first win there) */
+  newBestCurse: boolean;
+  /** curse tier opened by this win (0 = none) */
+  unlockedCurse: number;
+  /** stage ids opened by this run */
+  newStages: string[];
+  /** survived longer than ever on this stage */
+  newBestTime: boolean;
+  /** missions completed during this run */
+  missions: { id: string; name: string; daily: boolean; weapon?: string; hero?: string }[];
+}
 
 /** first level-up of a burst waits this long (s); AUTO mode then applies one every AUTO_GAP */
 const LEVELUP_DELAY = 0.15;
@@ -44,6 +62,10 @@ export class Game {
     Meta.load();
     G.rng = new Rng(this.seed());
     G.events = new EventBus();
+    // mission tracking hooks the bus first; old saves may already meet some goals
+    Missions.init();
+    Missions.check();
+    syncMenuStage();
     const app = document.getElementById("app")!;
     const glCanvas = document.getElementById("gl") as HTMLCanvasElement;
     const ovCanvas = document.getElementById("overlay") as HTMLCanvasElement;
@@ -112,6 +134,11 @@ export class Game {
 
   startRun(heroId: string): void {
     G.screens.close();
+    // a run restarted from the pause screen counts what it already did
+    if (Missions.running) Missions.abandonRun();
+    // stage + curse tier from the run setup (G.stageId / G.curse / G.mods): before
+    // the director loads the stage timeline and before anything spawns
+    applyRunSetup();
     G.heroId = heroId;
     resetRunStats();
     G.time = G.debug.startTime;
@@ -144,7 +171,10 @@ export class Game {
   }
 
   toMenu(): void {
+    // quitting mid-run: kills etc. still count for missions
+    if (Missions.running) Missions.abandonRun();
     G.state = "menu";
+    syncMenuStage();
     G.hud.show(false);
     G.enemies.clear();
     G.projectiles.clear();
@@ -176,17 +206,33 @@ export class Game {
     if (G.state === "gameover" || G.state === "victory") return;
     G.state = victory ? "victory" : "gameover";
     const earned = Math.round(G.stats.gold);
-    Meta.data.gold += earned;
-    Meta.data.runs++;
-    Meta.data.bestTime = Math.max(Meta.data.bestTime, G.time);
-    Meta.data.bestKills = Math.max(Meta.data.bestKills, G.stats.kills);
+    const md = Meta.data;
+    md.gold += earned;
+    md.runs++;
+    md.bestTime = Math.max(md.bestTime, G.time);
+    md.bestKills = Math.max(md.bestKills, G.stats.kills);
+    md.bestLevel = Math.max(md.bestLevel, G.player.level);
+    md.totalKills += G.stats.kills;
+    if (victory) md.wins++;
+    // per-stage records + curse unlocks, then missions (they read the records)
+    const rec = recordRun(victory, G.time);
+    const done = Missions.endRun(victory);
     Meta.save();
+    const summary: RunSummary = {
+      stageId: rec.stageId,
+      curse: rec.curse,
+      newBestCurse: rec.newBestCurse,
+      unlockedCurse: rec.unlockedCurse,
+      newStages: rec.newStages.map((s) => s.id),
+      newBestTime: rec.newBestTime,
+      missions: done.map((m) => ({ id: m.def.id, name: m.def.name, daily: m.daily, weapon: m.def.reward.weapon, hero: m.def.reward.hero })),
+    };
     G.input.release();
     G.audio.sfx(victory ? "victory" : "defeat");
     G.audio.music(false);
     G.events.emit("runEnd", { victory });
     // short delay so the death/victory moment reads
-    setTimeout(() => G.screens.showResults(victory, earned), victory ? 600 : 1200);
+    setTimeout(() => G.screens.showResults(victory, earned, summary), victory ? 600 : 1200);
   }
 
   private openLevelUp(): void {
@@ -332,6 +378,7 @@ export class Game {
       G.weapons.update(dt);
       G.projectiles.update(dt);
       G.pickups.update(dt);
+      Missions.tick(rawDt);
       // re-check the state: a chest picked up this frame must not be replaced by the level-up
       if (G.state === "playing" && G.player.pendingLevels > 0 && !G.player.dead) {
         this.levelUpDelay += rawDt;
