@@ -1126,7 +1126,7 @@ export class Screens {
         if (sec !== lastSec) {
           lastSec = sec;
           cnt.textContent = String(sec);
-          hint.textContent = auto ? "ออโต้: ปิดเองอัตโนมัติ" : `ปิดเองใน ${sec} วิ`;
+          hint.textContent = `${auto ? "ออโต้ • " : ""}ปิดเองใน ${sec} วิ`;
         }
         this.rafs[slot] = requestAnimationFrame(tick);
       };
