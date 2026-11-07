@@ -3,7 +3,9 @@ import { G } from "../core/G";
 import { Meta } from "../core/Meta";
 import { clamp, damp, easeOutCubic, lerp } from "../core/math";
 import { baseStats, xpToNext, type PlayerStats } from "./stats";
-import { heroById, type HeroDef } from "./heroes";
+import { HEROES, heroById, type HeroDef } from "./heroes";
+import { Ultimate } from "./Ultimate";
+import type { UltPose } from "./ultimates/types";
 
 /** ground decal: soft contact shadow + thin accent ring (ring is white, tinted by material colour) */
 let groundTex: THREE.Texture | null = null;
@@ -67,6 +69,10 @@ export class Player {
   pendingLevels = 0;
   stats: PlayerStats = baseStats();
   hero: HeroDef = heroById("knight");
+  /** ultimate skill: charge meter + cast (`G.player.ult.tryCast()`) */
+  readonly ult = new Ultimate();
+  /** 0..1 golden ultimate glow on the hero (set every frame by a running ultimate) */
+  ultGlow = 0;
 
   /** seconds of invulnerability left (after revive etc.) */
   invuln = 0;
@@ -110,6 +116,14 @@ export class Player {
   private hopT = 1;
   private lastHurt = 0;
   private eventsHooked = false;
+  private ultPrepared = false;
+  // --- ultimate pose (visual only) ---
+  private ultPose: UltPose | null = null;
+  private ultPoseT = 0;
+  private ultPoseDur = 0;
+  private ultSpin = 0;
+  private ultLand = 1;
+  private readonly ultColor = new THREE.Color("#ffd23f");
 
   constructor(scene: THREE.Scene) {
     scene.add(this.root);
@@ -148,6 +162,17 @@ export class Player {
     this.recalcStats();
     this.hp = this.stats.maxHp;
     this.hookEvents();
+    this.ultPose = null;
+    this.ultGlow = 0;
+    this.ultSpin = 0;
+    this.ultLand = 1;
+    // first reset (boot, before the shader prewarm): create every hero's
+    // ultimate effect objects so they compile with the rest of the scene
+    if (!this.ultPrepared) {
+      this.ultPrepared = true;
+      this.ult.prepare(HEROES.map((h) => h.ultimate));
+      this.ult.reset(this.hero.ultimate, false);
+    } else this.ult.reset(this.hero.ultimate);
   }
 
   private hookEvents(): void {
@@ -310,8 +335,27 @@ export class Player {
         this.hp = Math.min(this.stats.maxHp, this.hp + h);
       }
     }
+    this.ult.update(dt);
     this.detectAttack();
     this.animate(dt, moving);
+  }
+
+  /** start the hero's ultimate body animation (visual only) */
+  playUltPose(pose: UltPose, dur: number, color: string): void {
+    this.ultPose = pose;
+    this.ultPoseT = 0;
+    this.ultPoseDur = Math.max(0.3, dur);
+    this.ultLand = pose === "slam" ? 0 : 1;
+    this.ultColor.set(color);
+    this.ultGlow = 1;
+    this.hopT = 1;
+    this.kick(0.3);
+  }
+
+  /** the slam ultimate hit the ground: squash on landing */
+  ultLanded(): void {
+    this.ultLand = 1;
+    this.kick(-0.5);
   }
 
   /**
@@ -340,11 +384,40 @@ export class Player {
     const dy = d * damp(16, dt);
     this.yaw += dy;
     this.yawVel += ((dt > 0 ? dy / dt : 0) - this.yawVel) * damp(10, dt);
-    this.root.position.set(this.x, 0, this.z);
-    this.root.rotation.y = this.yaw;
-    if (this.model) this.model.position.y = this.hopT < 1 ? Math.sin(this.hopT * Math.PI) * 0.28 : 0;
-
     const t = G.realTime;
+
+    // ultimate pose: weight eases in/out; spin / lift / float
+    let poseW = 0;
+    let lift = 0;
+    const pose = this.ultPose;
+    if (pose) {
+      this.ultPoseT += dt;
+      const left = this.ultPoseDur - this.ultPoseT;
+      if (left <= 0) {
+        // keep the facing continuous: fold the spin into the yaw, which then eases back
+        this.yaw += this.ultSpin % (Math.PI * 2);
+        this.ultSpin = 0;
+        this.ultPose = null;
+      } else {
+        poseW = Math.min(1, this.ultPoseT / 0.12) * Math.min(1, left / 0.25);
+        if (pose === "spin") {
+          this.ultSpin += dt * 20 * Math.max(0.25, poseW);
+        } else if (pose === "slam") {
+          if (this.ultLand < 1) {
+            // leap up, hang, drop
+            const u = this.ultPoseT;
+            lift = u < 0.2 ? easeOutCubic(u / 0.2) * 1.3 : Math.max(0, 1.3 - ((u - 0.2) / 0.12) ** 2 * 1.3);
+          }
+        } else {
+          lift = (0.22 + Math.sin(t * 3.2) * 0.05) * poseW;
+        }
+      }
+    }
+
+    this.root.position.set(this.x, 0, this.z);
+    this.root.rotation.y = this.yaw + this.ultSpin;
+    if (this.model) this.model.position.y = (this.hopT < 1 ? Math.sin(this.hopT * Math.PI) * 0.28 : 0) + lift;
+
     const speedN = Math.min(1, Math.hypot(this.velX, this.velZ) / Math.max(1, this.stats.moveSpeed));
     this.moveBlend += ((moving ? 1 : 0) - this.moveBlend) * damp(10, dt);
     const mb = Math.min(this.moveBlend, Math.max(speedN, moving ? 0.35 : 0));
@@ -433,6 +506,7 @@ export class Player {
       r.armR.rotation.x = ax;
       r.armR.rotation.z = az;
     }
+    if (pose && poseW > 0) this.poseArms(pose, poseW, t);
     if (r.weapon) {
       let wx = Math.sin(t * 2.2) * 0.04 * (1 - mb);
       let sc = 1;
@@ -446,7 +520,8 @@ export class Player {
       r.weapon.scale.setScalar(Math.max(0.001, sc));
     }
     if (r.orbGlow) {
-      const pulse = 0.62 + Math.sin(t * 5) * 0.05 + (this.attackP < 1 ? Math.sin(this.attackP * Math.PI) * 0.35 : 0);
+      let pulse = 0.62 + Math.sin(t * 5) * 0.05 + (this.attackP < 1 ? Math.sin(this.attackP * Math.PI) * 0.35 : 0);
+      if (pose === "channel") pulse += poseW * (0.9 + Math.sin(t * 14) * 0.2);
       r.orbGlow.scale.setScalar(pulse);
     }
 
@@ -479,14 +554,69 @@ export class Player {
       r.hatTip.rotation.z = this.hatZ;
     }
 
-    // hurt flash / invulnerability blink
-    const blink = this.invuln > 0 && !this.dead ? (Math.sin(G.realTime * 30) > 0 ? 0.35 : 0) : 0;
+    // hurt flash / invulnerability blink (an ultimate glows gold instead of blinking)
+    const blink = this.invuln > 0 && !this.dead && this.ultGlow <= 0 ? (Math.sin(G.realTime * 30) > 0 ? 0.35 : 0) : 0;
     const f = Math.max(this.hurtFlash, blink);
-    for (const m of this.flashMats) m.emissive.setRGB(f * 0.9, f * 0.15, f * 0.1);
+    if (this.ultGlow > 0) {
+      this.ultGlow = Math.max(0, this.ultGlow - dt * 2.5);
+      const g = this.ultGlow * (0.42 + 0.18 * Math.sin(t * 16));
+      const c = this.ultColor;
+      for (const m of this.flashMats) m.emissive.setRGB(Math.max(f * 0.9, c.r * g), Math.max(f * 0.15, c.g * g), Math.max(f * 0.1, c.b * g));
+    } else {
+      for (const m of this.flashMats) m.emissive.setRGB(f * 0.9, f * 0.15, f * 0.1);
+    }
     this.shadow.position.x = this.x;
     this.shadow.position.z = this.z;
     const shS = 1 - hop * 0.9;
     this.shadow.scale.set(shS, 1, shS);
+  }
+
+  /** blend the arms (and body lean) into the ultimate pose */
+  private poseArms(pose: UltPose, w: number, t: number): void {
+    const r = this.rig;
+    let lx = 0;
+    let lz = 0;
+    let rx = 0;
+    let rz = 0;
+    let lean = 0;
+    if (pose === "slam") {
+      if (this.ultLand < 1) {
+        // both arms overhead for the leap
+        lx = -2.9;
+        rx = -2.9;
+        lz = -0.25;
+        rz = 0.25;
+      } else {
+        // crouched follow-through, fists to the ground
+        lx = -0.9;
+        rx = -0.9;
+        lz = -0.5;
+        rz = 0.5;
+        lean = 0.35;
+      }
+    } else if (pose === "channel") {
+      // staff raised high, free hand pushed forward
+      rx = -2.85 + Math.sin(t * 6) * 0.08;
+      rz = 0.12;
+      lx = -1.3;
+      lz = -0.35;
+      lean = -0.2;
+    } else {
+      // whirlwind: arms flung out
+      lx = -0.2;
+      rx = -0.2;
+      lz = -1.35;
+      rz = 1.35;
+    }
+    if (r.armL) {
+      r.armL.rotation.x = lerp(r.armL.rotation.x, lx, w);
+      r.armL.rotation.z = lerp(r.armL.rotation.z, lz, w);
+    }
+    if (r.armR) {
+      r.armR.rotation.x = lerp(r.armR.rotation.x, rx, w);
+      r.armR.rotation.z = lerp(r.armR.rotation.z, rz, w);
+    }
+    if (r.body) r.body.rotation.x = lerp(r.body.rotation.x, lean, w);
   }
 
   /** play the attack swing on the weapon arm (0..1 progress) */

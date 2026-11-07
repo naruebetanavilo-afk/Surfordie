@@ -14,6 +14,10 @@ import {
   kitOutlineMaterial,
 } from "../world/ModelKit";
 import { glowTexture } from "../fx/textures";
+import type { UltimateDef } from "./ultimates/types";
+import { ultKnight } from "./ultimates/knight";
+import { ultMage } from "./ultimates/mage";
+import { ultRanger } from "./ultimates/ranger";
 
 /** how the hero's arm animates when its starting weapon fires */
 export type AttackStyle = "swing" | "cast" | "throw";
@@ -45,6 +49,11 @@ export interface HeroDef {
    */
   build: () => THREE.Group;
   portrait: IconDraw;
+  /**
+   * The hero's ultimate (ไม้ตาย): Thai `name` / `desc` and `icon` are ready for
+   * menus (e.g. `iconURL("ult:" + ultimate.id, ultimate.icon)`).
+   */
+  ultimate: UltimateDef;
 }
 
 // ---------------------------------------------------------------------------
@@ -614,6 +623,7 @@ export const HEROES: HeroDef[] = [
     attackStyle: "swing",
     build: buildKnight,
     portrait: knightPortrait,
+    ultimate: ultKnight,
   },
   {
     id: "mage",
@@ -627,6 +637,7 @@ export const HEROES: HeroDef[] = [
     attackStyle: "cast",
     build: buildMage,
     portrait: magePortrait,
+    ultimate: ultMage,
   },
   {
     id: "ranger",
@@ -640,6 +651,7 @@ export const HEROES: HeroDef[] = [
     attackStyle: "throw",
     build: buildRanger,
     portrait: rangerPortrait,
+    ultimate: ultRanger,
   },
 ];
 

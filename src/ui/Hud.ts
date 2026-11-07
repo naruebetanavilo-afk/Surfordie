@@ -7,6 +7,14 @@ import { weaponById, WEAPONS } from "../weapons/registry";
 import { passiveById, PASSIVES } from "../upgrades/passives";
 import { RUN_LENGTH } from "../director/Director";
 import type { Choice } from "../weapons/WeaponSystem";
+import type { UltimateDef } from "../player/ultimates/types";
+import "./ultimate.css";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+/** ultimate ring: r = 46 in a 100x100 viewBox */
+const ULT_C = 2 * Math.PI * 46;
+/** ring fill steps (DOM is only written when the quantised value changes) */
+const ULT_STEPS = 200;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, parent?: HTMLElement, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -110,6 +118,15 @@ export class Hud {
   private announceText: HTMLDivElement;
   private hint: HTMLDivElement;
   private fps: HTMLDivElement;
+  // ultimate button + cast cut-in
+  private ultBtn: HTMLButtonElement;
+  private ultFill: SVGCircleElement;
+  private ultIcon: HTMLImageElement;
+  private ultLabel: HTMLSpanElement;
+  private ultDenyFlip = false;
+  private cutIn: HTMLDivElement;
+  private cutHero: HTMLImageElement;
+  private cutName: HTMLElement;
   /** HUD blocks that cover the playfield (top bar, kills/pause, slots, boss bars) */
   private bandEls: HTMLElement[] = [];
 
@@ -206,6 +223,48 @@ export class Hud {
 
     this.fps = el("div", "hud-fps", this.root);
 
+    // ---------------------------------------------------------- ultimate
+    this.cutIn = el("div", "ult-cutin", this.root);
+    const cband = el("div", "uc-band", this.cutIn);
+    this.cutHero = img("uc-hero", cband);
+    const ctext = el("div", "uc-text", cband);
+    el("small", "uc-tag", ctext, "ไม้ตาย!");
+    this.cutName = el("b", "uc-name", ctext);
+
+    this.ultBtn = el("button", "hud-ult interactive", this.root);
+    this.ultBtn.type = "button";
+    this.ultBtn.setAttribute("aria-label", "ไม้ตาย");
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("class", "ult-ring");
+    svg.setAttribute("viewBox", "0 0 100 100");
+    const track = document.createElementNS(SVG_NS, "circle");
+    track.setAttribute("class", "ult-track");
+    this.ultFill = document.createElementNS(SVG_NS, "circle");
+    this.ultFill.setAttribute("class", "ult-fill");
+    for (const c of [track, this.ultFill]) {
+      c.setAttribute("cx", "50");
+      c.setAttribute("cy", "50");
+      c.setAttribute("r", "46");
+      svg.appendChild(c);
+    }
+    this.ultFill.style.strokeDasharray = ULT_C.toFixed(2);
+    this.ultFill.style.strokeDashoffset = ULT_C.toFixed(2);
+    el("i", "ult-spark", this.ultBtn);
+    this.ultBtn.appendChild(svg);
+    const core = el("span", "ult-core", this.ultBtn);
+    this.ultIcon = img("ult-icon", core);
+    this.ultLabel = el("span", "ult-label", this.ultBtn, "0%");
+    el("span", "ult-key", this.ultBtn, "Space");
+    // boss arrows stay clear of it too
+    this.bandEls.push(this.ultBtn);
+    // onTap: works as a second finger while the joystick thumb is held
+    onTap(this.ultBtn, () => this.castUlt());
+    G.input.setUltHandler(() => {
+      if (G.state !== "playing") return false;
+      this.castUlt();
+      return true;
+    });
+
     G.events.on("announce", (e) => this.announce(e.text, e.color));
     G.events.on("bossSpawned", (e) => {
       this.announce(`${e.name} ปรากฏตัว!`, "#ff4f6a", "boss");
@@ -301,6 +360,12 @@ export class Hud {
     this.portrait.src = iconURL("hero:" + h.id, h.portrait, 128);
     this.portraitBox.style.setProperty("--accent", h.color);
     this.name.textContent = h.name;
+    const u = h.ultimate;
+    this.ultIcon.src = iconURL("ult:" + u.id, u.icon, 128);
+    this.ultBtn.style.setProperty("--ult", u.color);
+    this.ultBtn.setAttribute("aria-label", `ไม้ตาย: ${u.name}`);
+    this.ultBtn.classList.remove("ready", "active", "denyA", "denyB");
+    this.cutIn.classList.remove("show");
     for (const v of this.bossViews) this.bindBoss(v, -1, -1);
     this.bossMore.classList.add("hidden");
     this.bossScanT = 0;
@@ -360,6 +425,7 @@ export class Hud {
     if (this.changed("kills", G.stats.kills)) this.kills.textContent = formatNum(G.stats.kills);
 
     this.updateSlots();
+    this.updateUlt();
     this.updateBoss(dt);
     this.updateToasts(playing ? dt : 0);
     this.updateHint(playing ? dt : 0);
@@ -609,6 +675,51 @@ export class Hud {
       d.style.animationDelay = `${0.12 + 0.07 * i}s`;
     }
     this.toasts.push({ el: root, t: 0, mini: false, outT: -1 });
+  }
+
+  // ------------------------------------------------------------ ultimate
+
+  private castUlt(): void {
+    if (G.state !== "playing") return;
+    if (G.player.ult.tryCast()) return;
+    if (G.player.ult.active) return;
+    // not charged yet: wiggle + soft deny (restart the animation without a reflow)
+    this.ultDenyFlip = !this.ultDenyFlip;
+    this.ultBtn.classList.toggle("denyA", this.ultDenyFlip);
+    this.ultBtn.classList.toggle("denyB", !this.ultDenyFlip);
+    G.audio.sfx("deny", { vol: 0.6 });
+  }
+
+  private updateUlt(): void {
+    const u = G.player.ult;
+    const state = u.active ? 2 : u.ready ? 1 : 0;
+    if (this.changed("ultState", state)) {
+      this.ultBtn.classList.toggle("ready", state === 1);
+      this.ultBtn.classList.toggle("active", state === 2);
+      if (state === 1) this.ultLabel.textContent = "ไม้ตาย!";
+      else if (state === 2) this.ultLabel.textContent = "ปล่อย!";
+      else this.last.ultPct = -1;
+    }
+    // ring: charge while filling, remaining time while the effect plays
+    const f = state === 2 ? 1 - u.activeFrac : Math.min(1, u.charge);
+    const q = Math.round(f * ULT_STEPS);
+    if (this.changed("ultQ", q)) this.ultFill.style.strokeDashoffset = (ULT_C * (1 - q / ULT_STEPS)).toFixed(1);
+    if (state === 0) {
+      const pct = Math.min(99, Math.floor(u.charge * 100));
+      if (this.changed("ultPct", pct)) this.ultLabel.textContent = `${pct}%`;
+    }
+  }
+
+  /** big diagonal cut-in with the hero and the ultimate's name */
+  ultCast(def: UltimateDef): void {
+    const h = G.player.hero;
+    this.cutHero.src = iconURL("hero:" + h.id, h.portrait, 128);
+    this.cutName.textContent = def.name;
+    this.cutIn.style.setProperty("--c", def.color);
+    this.cutIn.style.setProperty("--h", h.color);
+    this.cutIn.classList.remove("show");
+    void this.cutIn.offsetWidth; // restart the CSS animation (rare event, reflow is fine)
+    this.cutIn.classList.add("show");
   }
 
   // ------------------------------------------------------------ banner
