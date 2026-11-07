@@ -18,6 +18,11 @@ import { AudioSys } from "../audio/Audio";
 import { WeaponSystem } from "../weapons/WeaponSystem";
 import { WEAPONS } from "../weapons/registry";
 import { prewarmShaders } from "./prewarm";
+import { recommend } from "../weapons/recommend";
+
+/** first level-up of a burst waits this long (s); AUTO mode then applies one every AUTO_GAP */
+const LEVELUP_DELAY = 0.15;
+const AUTO_GAP = 0.25;
 
 /**
  * Boots every system, owns the main loop and the run state machine.
@@ -190,23 +195,51 @@ export class Game {
     G.audio.sfx("levelup");
     G.fx.ring(G.player.x, G.player.z, { radius: 3.5, color: "#ffe680", life: 0.6, width: 0.6 });
     const choices = G.weapons.rollChoices();
-    G.screens.showLevelUp(choices, (c) => {
-      G.weapons.applyChoice(c);
+    const next = () => {
       G.player.pendingLevels--;
       G.screens.close();
-      if (G.player.pendingLevels > 0) {
+      // AUTO mode switched on from the level-up screen resolves the rest in play
+      if (G.player.pendingLevels > 0 && !Meta.data.autoPick) {
         this.openLevelUp();
       } else {
         G.state = "playing";
         this.last = performance.now();
       }
-    });
+    };
+    G.screens.showLevelUp(
+      choices,
+      (c) => {
+        G.weapons.applyChoice(c);
+        next();
+      },
+      () => {
+        G.weapons.skipLevel();
+        next();
+      },
+    );
     if (G.debug.autoplay) {
+      // the bot takes the recommended card like a sensible player
       setTimeout(() => {
-        const btn = document.querySelector<HTMLButtonElement>(".levelup .card");
+        const btn = document.querySelector<HTMLButtonElement>(".levelup .card.rec") ?? document.querySelector<HTMLButtonElement>(".levelup .card");
         btn?.click();
       }, 150);
     }
+  }
+
+  /**
+   * AUTO mode: apply the recommended card of a fresh roll without pausing.
+   * The usual level-up sound / ring play and WeaponSystem.applyChoice shows
+   * the skill toast, so the player still sees what they got. Never spends
+   * reroll / skip / banish charges.
+   */
+  private autoLevelUp(): void {
+    const p = G.player;
+    G.audio.sfx("levelup");
+    G.fx.ring(p.x, p.z, { radius: 3.5, color: "#ffe680", life: 0.6, width: 0.6 });
+    const choices = G.weapons.rollChoices();
+    const k = recommend(choices);
+    if (k >= 0) G.weapons.applyChoice(choices[k]);
+    p.pendingLevels--;
   }
 
   private bot(dt: number): void {
@@ -302,9 +335,15 @@ export class Game {
       // re-check the state: a chest picked up this frame must not be replaced by the level-up
       if (G.state === "playing" && G.player.pendingLevels > 0 && !G.player.dead) {
         this.levelUpDelay += rawDt;
-        if (this.levelUpDelay > 0.15) {
-          this.levelUpDelay = 0;
-          this.openLevelUp();
+        if (this.levelUpDelay > LEVELUP_DELAY) {
+          if (Meta.data.autoPick) {
+            // stagger a burst of levels so each toast / ring reads
+            this.levelUpDelay = LEVELUP_DELAY - AUTO_GAP;
+            this.autoLevelUp();
+          } else {
+            this.levelUpDelay = 0;
+            this.openLevelUp();
+          }
         }
       }
       if (G.time >= RUN_LENGTH && !G.player.dead && G.state === "playing" && this.endT < 0) {
@@ -329,6 +368,7 @@ export class Game {
     }
     G.overlay.draw(rawDt);
     if (G.state === "playing" || G.state === "levelup" || G.state === "chest" || G.state === "paused") G.hud.update();
+    G.screens.update();
 
     // perf stats
     G.perf.frameMs = G.perf.frameMs * 0.9 + (performance.now() - t0) * 0.1;

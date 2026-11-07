@@ -1,0 +1,710 @@
+/* =====================================================================
+   Level-up systems: decision timer, AUTO toggle, recommendation ribbon,
+   reroll / skip / banish buttons, chest auto-close countdown and the
+   in-play AUTO chip. Same chunky cartoon language as ui.css (loaded after
+   it, so equal-specificity rules here win).
+   ===================================================================== */
+
+/* ------------------------------------------------------- timer + AUTO row */
+.lu-bar {
+  position: relative;
+  width: min(100%, 30em);
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin: -0.25em 0 0.75em;
+  animation: fadeUp 0.35s 0.15s both;
+}
+
+.lu-timer {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+}
+
+.lu-timer-ico {
+  width: 1.65em;
+  height: 1.65em;
+  flex: none;
+  filter: drop-shadow(0 0.08em 0 var(--ink));
+}
+
+.lu-timer-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 1.45em;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #140d26;
+  border: 0.14em solid var(--ink);
+  box-shadow: inset 0 0.16em 0 rgba(0, 0, 0, 0.45), 0 0.16em 0 var(--ink);
+}
+
+.lu-timer-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  transform-origin: left center;
+  background: linear-gradient(180deg, #d4ff8a, #5fd83a 55%, #2aa63a);
+  box-shadow: inset 0 0.14em 0 rgba(255, 255, 255, 0.45);
+  will-change: transform;
+}
+
+.lu-timer-cap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.74em;
+  line-height: 1;
+  white-space: nowrap;
+  color: #fff;
+  text-shadow: var(--outline), 0 0 0.35em rgba(22, 13, 36, 0.9);
+  pointer-events: none;
+}
+
+.lu-timer-sec {
+  min-width: 1.45em;
+  font-size: 1.45em;
+  line-height: 1;
+  text-align: center;
+  color: var(--txt-yellow);
+  text-shadow: var(--outline-drop);
+  font-variant-numeric: tabular-nums;
+}
+
+/* last three seconds: red bar, pulsing number */
+.lu-timer.hurry .lu-timer-fill {
+  background: linear-gradient(180deg, #ffb0b8, #ff4f6a 55%, #c4173d);
+}
+
+.lu-timer.hurry .lu-timer-sec {
+  color: #ff7d8d;
+  animation: luHurry 1s ease-in-out infinite;
+}
+
+.lu-timer.refill .lu-timer-track {
+  animation: luRefill 0.35s ease-out;
+}
+
+/* unlimited time: a quiet empty track with the label */
+.lu-timer.off .lu-timer-fill {
+  display: none;
+}
+
+.lu-timer.off .lu-timer-cap {
+  opacity: 0.75;
+}
+
+.lu-timer.off .lu-timer-sec {
+  color: #cfc2f5;
+}
+
+/* ------------------------------------------------------- AUTO toggle pill */
+.lu-auto {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  height: 2.35em;
+  padding: 0 0.4em 0 0.3em;
+  font: 800 0.92em/1 var(--font);
+  color: #fff;
+  text-shadow: var(--outline);
+  cursor: pointer;
+  touch-action: manipulation;
+  background: linear-gradient(180deg, #3e3163, #241a3d);
+  border: 0.15em solid var(--ink);
+  border-radius: 999px;
+  box-shadow: inset 0 0.14em 0 rgba(255, 255, 255, 0.2), 0 0.2em 0 var(--ink);
+  transition: transform 0.08s, filter 0.15s;
+}
+
+.lu-auto:active {
+  transform: translateY(0.12em) scale(0.96);
+}
+
+/* >= 44 px touch target */
+.lu-auto::after {
+  content: "";
+  position: absolute;
+  inset: -0.45em -0.25em;
+}
+
+.lu-auto-ico {
+  width: 1.55em;
+  height: 1.55em;
+  flex: none;
+  filter: drop-shadow(0 0.08em 0 var(--ink)) grayscale(0.7) brightness(0.9);
+  transition: filter 0.2s;
+}
+
+.lu-auto-sw {
+  position: relative;
+  width: 2.35em;
+  height: 1.35em;
+  flex: none;
+  border-radius: 999px;
+  background: #1a1230;
+  border: 0.12em solid var(--ink);
+  box-shadow: inset 0 0.12em 0 rgba(0, 0, 0, 0.45);
+  transition: background 0.2s;
+}
+
+.lu-auto-sw i {
+  position: absolute;
+  top: 0.08em;
+  left: 0.08em;
+  width: 0.95em;
+  height: 0.95em;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff, #d9d0f5);
+  box-shadow: 0 0.1em 0 var(--ink);
+  transition: transform 0.22s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.lu-auto.on {
+  background: linear-gradient(180deg, #4b8a2a, #1f5a1c);
+  box-shadow: inset 0 0.14em 0 rgba(255, 255, 255, 0.25), 0 0 0.8em rgba(157, 255, 58, 0.45), 0 0.2em 0 var(--ink);
+}
+
+.lu-auto.on .lu-auto-ico {
+  filter: drop-shadow(0 0.08em 0 var(--ink));
+}
+
+.lu-auto.on .lu-auto-sw {
+  background: linear-gradient(180deg, #a7ff6e, #2fcf4a);
+}
+
+.lu-auto.on .lu-auto-sw i {
+  transform: translateX(1em);
+}
+
+/* pause header: the toggle sits right of the title */
+.panel-head .lu-auto {
+  font-size: 0.86em;
+}
+
+/* ------------------------------------------------------- recommendation */
+.card-rec {
+  position: absolute;
+  top: -0.7em;
+  right: 0.8em;
+  z-index: 2;
+  display: none;
+  align-items: center;
+  gap: 0.15em;
+  padding: 0.05em 0.5em 0.1em 0.25em;
+  font-size: 0.74em;
+  line-height: 1.25;
+  white-space: nowrap;
+  color: #fff;
+  text-shadow: var(--outline);
+  background: linear-gradient(180deg, #c6ff7a, #34c43f);
+  border: 0.13em solid var(--ink);
+  border-radius: 0.45em;
+  box-shadow: 0 0.13em 0 var(--ink);
+  transform: rotate(4deg);
+  pointer-events: none;
+}
+
+.card-rec img {
+  width: 1.25em;
+  height: 1.25em;
+  margin: -0.15em 0;
+  filter: drop-shadow(0 0.06em 0 var(--ink));
+}
+
+.card.rec .card-rec {
+  display: inline-flex;
+  animation: luRecIn 0.45s 0.35s cubic-bezier(0.2, 1.7, 0.4, 1) both;
+}
+
+/* glowing lime frame around the recommended card */
+.card::after {
+  content: "";
+  position: absolute;
+  inset: -0.32em;
+  border: 0.17em solid var(--lime);
+  border-radius: 1.22em;
+  box-shadow: 0 0 0.9em rgba(157, 255, 58, 0.55), inset 0 0 0.6em rgba(157, 255, 58, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.card.rec::after {
+  opacity: 1;
+  animation: luRecGlow 1.6s ease-in-out infinite;
+}
+
+.card.shake {
+  animation: shake 0.35s;
+}
+
+/* ------------------------------------------------------- banish mode */
+.card-ban {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 0.7em;
+  border-radius: inherit;
+  background: linear-gradient(100deg, rgba(255, 79, 106, 0.05) 40%, rgba(255, 79, 106, 0.42));
+  box-shadow: inset 0 0 0 0.16em rgba(255, 79, 106, 0.85);
+  pointer-events: none;
+}
+
+.card-ban img {
+  width: 2.6em;
+  height: 2.6em;
+  filter: drop-shadow(0 0.1em 0 var(--ink));
+  animation: luBanBob 0.9s ease-in-out infinite;
+}
+
+.levelup.banishing .card:not(.no-banish) .card-ban {
+  display: flex;
+}
+
+.levelup.banishing .card:not(.no-banish) {
+  animation: luWobble 0.9s ease-in-out infinite;
+}
+
+.levelup.banishing .card.no-banish {
+  opacity: 0.4;
+  filter: grayscale(0.8);
+}
+
+/* the recommendation frame would read as "pick me" while choosing what to cut */
+.levelup.banishing .card::after,
+.levelup.banishing .card-rec {
+  opacity: 0;
+}
+
+.card.banished {
+  animation: luBanished 0.3s ease-in both;
+  pointer-events: none;
+}
+
+.card.swap-in {
+  animation: luSwapIn 0.42s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+
+/* ------------------------------------------------------- action buttons */
+.lu-actions {
+  position: relative;
+  width: min(100%, 30em);
+  display: flex;
+  gap: 0.5em;
+  margin-top: 0.95em;
+  animation: fadeUp 0.35s 0.3s both;
+}
+
+.lu-act {
+  --b1: #4d3b7d;
+  --b2: #2b1f4f;
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  min-height: 3em;
+  padding: 0.3em 0.45em 0.35em 0.35em;
+  font: 800 1em/1.05 var(--font);
+  color: #fff;
+  text-align: left;
+  text-shadow: var(--outline);
+  background: linear-gradient(180deg, var(--b1), var(--b2));
+  border: 0.15em solid var(--ink);
+  border-radius: 0.8em;
+  box-shadow: inset 0 0.15em 0 rgba(255, 255, 255, 0.3), inset 0 -0.2em 0 rgba(0, 0, 0, 0.2), 0 0.26em 0 var(--ink);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.08s, box-shadow 0.08s, filter 0.15s;
+}
+
+.lu-act:active {
+  transform: translateY(0.2em) scale(0.97);
+  box-shadow: inset 0 0.15em 0 rgba(255, 255, 255, 0.3), inset 0 -0.1em 0 rgba(0, 0, 0, 0.2), 0 0.06em 0 var(--ink);
+}
+
+.lu-act.reroll {
+  --b1: #4fb8e8;
+  --b2: #1f6aa8;
+}
+
+.lu-act.skip {
+  --b1: #ffbf5a;
+  --b2: #d9700f;
+}
+
+.lu-act.banish {
+  --b1: #ff7d8d;
+  --b2: #c01a40;
+}
+
+.lu-act-ico {
+  width: 1.75em;
+  height: 1.75em;
+  flex: none;
+  filter: drop-shadow(0 0.08em 0 var(--ink));
+}
+
+.lu-act-txt {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.08em;
+}
+
+.lu-act-label {
+  font-size: 0.98em;
+  white-space: nowrap;
+}
+
+.lu-act-cap {
+  font-size: 0.62em;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff6d8;
+  text-shadow: 0 0.09em 0 var(--ink), 0.06em 0 0 var(--ink), -0.06em 0 0 var(--ink);
+}
+
+/* charges left this run */
+.lu-act-n {
+  position: absolute;
+  top: -0.55em;
+  right: -0.4em;
+  min-width: 1.5em;
+  height: 1.5em;
+  padding: 0 0.3em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8em;
+  line-height: 1;
+  color: #3a2000;
+  text-shadow: none;
+  background: linear-gradient(180deg, #fff1a0, #ffb000);
+  border: 0.14em solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 0 0.12em 0 var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.lu-act.empty {
+  filter: grayscale(0.85) brightness(0.7);
+}
+
+.lu-act.empty .lu-act-n {
+  background: #6d6390;
+  color: #fff;
+}
+
+.lu-act.shake {
+  animation: shake 0.35s;
+}
+
+/* banish armed: "cancel" state with a pulsing rim */
+.lu-act.banish.armed {
+  --b1: #ff5a75;
+  --b2: #9c0d2c;
+  animation: luArmed 0.9s ease-in-out infinite;
+}
+
+.levelup.picked .lu-actions,
+.levelup.picked .lu-bar {
+  opacity: 0.35;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.levelup.auto-picked .lu-sub {
+  color: var(--lime);
+}
+
+.levelup.skipped .lu-sub {
+  color: var(--txt-yellow);
+}
+
+/* ------------------------------------------------------- chest auto-close */
+.chest-ok.counting {
+  overflow: hidden;
+}
+
+.chest-count-bar {
+  position: absolute;
+  left: 0.7em;
+  right: 0.7em;
+  bottom: 0.32em;
+  height: 0.2em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 0.06em 0 rgba(0, 0, 0, 0.25);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.chest-count {
+  min-width: 1.3em;
+  height: 1.3em;
+  margin-left: 0.15em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72em;
+  line-height: 1;
+  border-radius: 999px;
+  background: rgba(22, 13, 36, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.chest-hint.auto-close {
+  animation: none;
+  opacity: 0.85;
+}
+
+/* ------------------------------------------------------- in-play AUTO chip */
+.auto-chip-wrap {
+  position: absolute;
+  /* under the HUD's kills / pause row (top: 3.3em, 2.75em tall) */
+  top: calc(var(--safe-top) + 6.7em);
+  right: calc(var(--safe-right) + 0.6em);
+  font-family: var(--font);
+  font-weight: 800;
+  font-size: clamp(12.5px, 3.8vw, 16px);
+  line-height: 1.15;
+  pointer-events: none;
+}
+
+.auto-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  height: 1.95em;
+  padding: 0 0.55em 0 0.2em;
+  font: 800 0.84em/1 var(--font);
+  color: #fff;
+  text-shadow: var(--outline);
+  cursor: pointer;
+  touch-action: manipulation;
+  pointer-events: auto;
+  background: var(--ink-a);
+  border: 0.14em solid var(--ink);
+  border-radius: 999px;
+  box-shadow: inset 0 0.12em 0 rgba(255, 255, 255, 0.16), 0 0.18em 0 var(--ink);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+/* >= 44 px touch target without growing the visuals (stays clear of the
+   pause button above: the chip starts 0.65em below it) */
+.auto-chip::after {
+  content: "";
+  position: absolute;
+  inset: -0.5em -0.35em;
+}
+
+.auto-chip-ico {
+  width: 1.55em;
+  height: 1.55em;
+  flex: none;
+  filter: drop-shadow(0 0.08em 0 var(--ink)) grayscale(0.75) brightness(0.85);
+}
+
+.auto-chip-state {
+  margin-left: 0.15em;
+  padding: 0.1em 0.38em 0.12em;
+  font-size: 0.78em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #cfc2f5;
+}
+
+.auto-chip.on {
+  background: linear-gradient(180deg, #5fbf34, #237a26);
+  box-shadow: inset 0 0.12em 0 rgba(255, 255, 255, 0.3), 0 0 0.75em rgba(157, 255, 58, 0.55), 0 0.18em 0 var(--ink);
+}
+
+.auto-chip.on .auto-chip-ico {
+  filter: drop-shadow(0 0.08em 0 var(--ink));
+  animation: spin 3.2s linear infinite;
+}
+
+.auto-chip.on .auto-chip-state {
+  background: rgba(22, 13, 36, 0.45);
+  color: var(--lime);
+}
+
+.auto-chip.popA {
+  animation: luChipA 0.35s cubic-bezier(0.2, 1.8, 0.4, 1);
+}
+.auto-chip.popB {
+  animation: luChipB 0.35s cubic-bezier(0.2, 1.8, 0.4, 1);
+}
+
+/* ------------------------------------------------------- landscape phones */
+@media (orientation: landscape) and (max-height: 560px) {
+  .auto-chip-wrap {
+    font-size: clamp(12px, 3.4vh, 15px);
+  }
+
+  /* every em counts: tighter rhythm, actions + bar match the card row */
+  .screen.levelup {
+    padding-top: calc(var(--safe-top) + 8px);
+    padding-bottom: calc(var(--safe-bottom) + 10px);
+  }
+
+  .lu-bar,
+  .lu-actions {
+    width: min(100%, 50em);
+  }
+
+  .lu-bar {
+    margin: -0.35em 0 0.6em;
+  }
+
+  .lu-actions {
+    margin-top: 0.75em;
+  }
+
+  .lu-act {
+    min-height: 2.6em;
+    padding-top: 0.2em;
+    padding-bottom: 0.25em;
+  }
+
+  .levelup .card-ban {
+    justify-content: center;
+    align-items: flex-start;
+    padding: 0.5em 0 0;
+  }
+}
+
+/* ------------------------------------------------------- keyframes */
+@keyframes luHurry {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.28);
+  }
+}
+
+@keyframes luRefill {
+  0% {
+    filter: brightness(2.2);
+  }
+  100% {
+    filter: none;
+  }
+}
+
+@keyframes luRecIn {
+  from {
+    opacity: 0;
+    transform: scale(0.3) rotate(-20deg);
+  }
+}
+
+@keyframes luRecGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0.5em rgba(157, 255, 58, 0.4), inset 0 0 0.4em rgba(157, 255, 58, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 1.2em rgba(157, 255, 58, 0.8), inset 0 0 0.7em rgba(157, 255, 58, 0.45);
+  }
+}
+
+@keyframes luBanBob {
+  50% {
+    transform: scale(1.15) rotate(-8deg);
+  }
+}
+
+@keyframes luWobble {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-0.6deg);
+  }
+  75% {
+    transform: rotate(0.6deg);
+  }
+}
+
+@keyframes luBanished {
+  0% {
+    transform: none;
+    filter: none;
+    opacity: 1;
+  }
+  35% {
+    transform: scale(1.04) rotate(-2deg);
+    filter: brightness(1.6) sepia(1) hue-rotate(-40deg) saturate(4);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.6) rotate(8deg) translateY(30%);
+    filter: brightness(0.6) sepia(1) hue-rotate(-40deg) saturate(4);
+    opacity: 0;
+  }
+}
+
+@keyframes luSwapIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.7) rotate(-4deg);
+    filter: brightness(2);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes luArmed {
+  0%,
+  100% {
+    box-shadow: inset 0 0.15em 0 rgba(255, 255, 255, 0.3), 0 0 0 0.1em rgba(255, 79, 106, 0.6), 0 0.26em 0 var(--ink);
+  }
+  50% {
+    box-shadow: inset 0 0.15em 0 rgba(255, 255, 255, 0.3), 0 0 0.9em 0.2em rgba(255, 79, 106, 0.9), 0 0.26em 0 var(--ink);
+  }
+}
+
+@keyframes luChipA {
+  40% {
+    transform: scale(1.15);
+  }
+}
+
+@keyframes luChipB {
+  40% {
+    transform: scale(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .levelup.banishing .card:not(.no-banish),
+  .card.rec::after,
+  .auto-chip.on .auto-chip-ico,
+  .lu-timer.hurry .lu-timer-sec {
+    animation: none;
+  }
+}

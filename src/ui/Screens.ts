@@ -1,6 +1,6 @@
 import { G } from "../core/G";
 import { Flow } from "../core/flow";
-import { Meta, SHOP, type ShopUpgrade } from "../core/Meta";
+import { Meta, SHOP, PICK_TIMER_DEFAULT, type ShopUpgrade } from "../core/Meta";
 import { HEROES, type HeroDef } from "../player/heroes";
 import { iconURL, uiIcon, shopIcon, type UiIconName } from "./icons";
 import { formatTime, formatNum } from "../core/math";
@@ -9,7 +9,11 @@ import { passiveById } from "../upgrades/passives";
 import { RUN_LENGTH } from "../director/Director";
 import { splitStatLine } from "./Hud";
 import { onTap } from "./tap";
-import type { Choice } from "../weapons/WeaponSystem";
+import { choiceKey, type Choice, type LevelUpAction } from "../weapons/WeaponSystem";
+import { recommend } from "../weapons/recommend";
+import { luIcon, luShopIcon, type LevelUpGlyph } from "./levelupIcons";
+import { AutoChip } from "./autoChip";
+import "./levelup.css";
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, parent?: HTMLElement, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -62,6 +66,11 @@ type Quality = keyof typeof QUALITY_NAMES;
 
 /** guard against accidental taps right after a modal opens (ms) */
 const TAP_GUARD = 320;
+/** level-up: S / A double as movement keys, so they wait a little longer */
+const MOVE_KEY_GUARD = 650;
+/** chests close by themselves this long after the reveal (ms): AUTO mode / normal */
+const CHEST_AUTO_CLOSE = 1500;
+const CHEST_IDLE_CLOSE = 6000;
 /** results: buttons wait for the stat count-up (250 ms delay + 900 ms) to mostly finish */
 const RESULTS_GUARD = 900;
 
@@ -79,9 +88,13 @@ export class Screens {
   private onKey: ((e: KeyboardEvent) => void) | null = null;
   /** records before the current run started (to flag new bests) */
   private prev = { time: 0, kills: 0, level: 0 };
+  /** in-play AUTO mode chip (under the HUD's pause button) */
+  private autoChip: AutoChip;
 
   constructor(private ui: HTMLElement) {
     this.layer = el("div", "screens", ui);
+    // below the modal layer: level-up / chest / pause screens cover it like the HUD
+    this.autoChip = new AutoChip(ui, this.layer);
     // persisted settings that live in Meta (quality is persisted by World)
     if (Meta.data.showFps) G.debug.showFps = true;
     window.addEventListener("keydown", (e) => {
@@ -121,6 +134,38 @@ export class Screens {
 
   private later(ms: number, fn: () => void): void {
     this.timers.push(window.setTimeout(fn, ms));
+  }
+
+  /** per-frame UI that lives outside the modals (AUTO chip). Called by Game every frame. */
+  update(): void {
+    this.autoChip.update();
+  }
+
+  /**
+   * Compact "ออโต้" toggle (glyph + label + mini switch) used on the level-up
+   * and pause screens. `onChange` runs after the setting flipped.
+   */
+  private autoToggle(parent: HTMLElement, onChange?: (on: boolean) => void): HTMLButtonElement {
+    const b = el("button", "lu-auto", parent);
+    b.type = "button";
+    img("lu-auto-ico", b, luIcon("auto", 64));
+    el("span", "lu-auto-txt", b, "ออโต้");
+    const sw = el("span", "lu-auto-sw", b);
+    el("i", "", sw);
+    const sync = () => {
+      const on = Meta.data.autoPick;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", String(on));
+      b.setAttribute("aria-label", on ? "ออโต้เลือกสกิล: เปิด" : "ออโต้เลือกสกิล: ปิด");
+    };
+    sync();
+    onTap(b, () => {
+      Meta.setAutoPick(!Meta.data.autoPick);
+      G.audio.sfx("select");
+      sync();
+      onChange?.(Meta.data.autoPick);
+    });
+    return b;
   }
 
   /** true while a freshly opened modal should ignore taps */
@@ -313,7 +358,7 @@ export class Screens {
       const card = el("div", "shop-card", grid);
       card.style.setProperty("--accent", color);
       card.style.animationDelay = `${0.03 * idx}s`;
-      img("shop-icon", card, shopIcon(up.id, color, 96));
+      img("shop-icon", card, luShopIcon(up.id, color, 96) ?? shopIcon(up.id, color, 96));
       const main = el("div", "shop-main", card);
       const name = el("div", "shop-name", main, up.name);
       const pips = el("div", "pips", name);
@@ -398,10 +443,11 @@ export class Screens {
     this.head(panel, "ตั้งค่า", onBack);
     const body = el("div", "set-list", panel);
 
-    const row = (label: string, icon: UiIconName) => {
+    /** settings row; `icon` is a UI glyph name or a ready image URL */
+    const row = (label: string, icon: UiIconName | { src: string }) => {
       const r = el("div", "set-row", body);
       const l = el("div", "set-label", r);
-      img("set-ico", l, uiIcon(icon, 64));
+      img("set-ico", l, typeof icon === "string" ? uiIcon(icon, 64) : icon.src);
       el("span", "", l, label);
       return r;
     };
@@ -577,6 +623,32 @@ export class Screens {
       },
     );
 
+    // level-up: decision timer (10 s / unlimited) and AUTO mode
+    const ts = el("div", "seg", row("เวลาเลือกสกิล", "hourglass"));
+    const tBtns: HTMLButtonElement[] = [];
+    const syncTimer = () => tBtns.forEach((x) => x.classList.toggle("on", (Number(x.dataset.t) > 0) === Meta.pickSeconds() > 0));
+    ([
+      [PICK_TIMER_DEFAULT, `${PICK_TIMER_DEFAULT} วินาที`],
+      [0, "ไม่จำกัด"],
+    ] as const).forEach(([t, label]) => {
+      const b = el("button", "seg-btn", ts, label);
+      b.type = "button";
+      b.dataset.t = String(t);
+      tBtns.push(b);
+      onTap(b, () => {
+        Meta.data.pickTimer = t;
+        Meta.save();
+        G.audio.sfx("select");
+        syncTimer();
+      });
+    });
+    syncTimer();
+    sw(
+      row("ออโต้เลือกสกิล", { src: luIcon("auto", 64) }),
+      () => Meta.data.autoPick,
+      (v) => Meta.setAutoPick(v),
+    );
+
     const note = el("div", "set-note", panel);
     note.setAttribute("aria-live", "polite");
     syncQuality();
@@ -587,17 +659,53 @@ export class Screens {
   }
 
   // ================================================================ level up
-  showLevelUp(choices: Choice[], onPick: (c: Choice) => void): void {
+  /**
+   * Level-up cards. The recommended card (weapons/recommend.ts) carries a
+   * "แนะนำ" badge; a decision timer (Meta.pickSeconds(), 0 = unlimited) starts
+   * after the tap guard and picks the recommendation when it runs out.
+   * Reroll / skip / banish spend per-run charges (G.weapons.charges); the AUTO
+   * toggle takes the recommendation now and lets Game resolve later levels.
+   * `onSkip` is called instead of `onPick` for a skipped level (no skip button
+   * without it).
+   */
+  showLevelUp(choices: Choice[], onPick: (c: Choice) => void, onSkip?: () => void): void {
     const s = this.open("levelup");
+    const ws = G.weapons;
     el("div", "burst-rays", s);
     const head = el("div", "lu-head", s);
     const title = el("div", "lu-title", head);
     el("span", "", title, "เลเวลอัป!");
     el("div", "lu-level", head, `Lv.${G.player.level}`);
-    el("div", "lu-sub", s, "เลือกพลัง 1 อย่าง");
+    const SUB = "เลือกพลัง 1 อย่าง";
+    const sub = el("div", "lu-sub", s, SUB);
+
+    // ---- decision timer + AUTO toggle
+    const total = Meta.pickSeconds();
+    const bar = el("div", "lu-bar", s);
+    const timer = el("div", "lu-timer" + (total > 0 ? "" : " off"), bar);
+    img("lu-timer-ico", timer, uiIcon("hourglass", 64));
+    const track = el("div", "lu-timer-track", timer);
+    const fill = el("div", "lu-timer-fill", track);
+    el("span", "lu-timer-cap", track, total > 0 ? "เลือกให้อัตโนมัติใน" : "ไม่จำกัดเวลา");
+    const secEl = el("b", "lu-timer-sec", timer, total > 0 ? String(total) : "∞");
+    const autoBtn = this.autoToggle(bar, (on) => {
+      // AUTO on: take the recommendation now; Game resolves the remaining levels
+      if (!on) return;
+      if (busy) this.later(320, () => pick(rec, true));
+      else pick(rec, true);
+    });
+
     const list = el("div", "card-list", s);
-    list.classList.toggle("four", choices.length >= 4);
+    const foot = el("div", "lu-actions", s);
+
+    let cur = choices.slice();
+    let rec = -1;
+    let cardEls: HTMLButtonElement[] = [];
     let picked = false;
+    /** a banished card is animating out: no picks until its replacement is in */
+    let busy = false;
+    let banishing = false;
+
     // a press must start after the guard window (stops a held joystick finger
     // or a double tap from instantly choosing a card). Pointer taps carry the
     // time of their own press; keyboard / programmatic clicks fall back to the
@@ -607,23 +715,14 @@ export class Screens {
       armedAt = this.guarded() ? Infinity : performance.now();
     });
     const armed = (downAt: number) => (downAt >= 0 ? downAt - this.openedAt >= TAP_GUARD : armedAt !== Infinity);
+    const tapOk = (downAt: number) => G.debug.autoplay || (!this.guarded() && armed(downAt));
 
-    const pick = (c: Choice, card: HTMLElement) => {
-      if (picked) return;
-      picked = true;
-      s.classList.add("picked");
-      card.classList.add("chosen");
-      G.audio.sfx("select");
-      this.later(150, () => onPick(c));
-    };
-
-    const cardEls: HTMLButtonElement[] = [];
-    choices.forEach((c, idx) => {
-      const card = el("button", "card", list);
+    const buildCard = (c: Choice, idx: number, delay: number): HTMLButtonElement => {
+      const card = el("button", "card");
       card.type = "button";
       card.dataset.kind = c.kind;
       card.style.setProperty("--accent", c.color);
-      card.style.animationDelay = `${0.1 + idx * 0.075}s`;
+      card.style.animationDelay = `${delay}s`;
       if (c.kind === "evolve") {
         card.classList.add("evo");
         el("i", "shine", card);
@@ -655,20 +754,256 @@ export class Screens {
           if (val) el("b", "", d, " " + val);
         }
       }
+      // recommendation ribbon (shown by CSS on the .rec card only)
+      const rb = el("span", "card-rec", card);
+      img("", rb, uiIcon("star", 64));
+      el("span", "", rb, "แนะนำ");
+      // banish-mode overlay
+      const bx = el("span", "card-ban", card);
+      img("", bx, luIcon("banish", 64));
       el("span", "card-key", card, String(idx + 1));
 
       // onTap: a second finger works while the joystick thumb is still down
       onTap(card, (_e, downAt) => {
-        if (picked) return;
-        if (!G.debug.autoplay && (this.guarded() || !armed(downAt))) return;
-        pick(c, card);
+        if (picked || busy || !tapOk(downAt)) return;
+        const i = cardEls.indexOf(card);
+        if (i < 0) return;
+        if (banishing) doBanish(i);
+        else pick(i);
       });
-      cardEls.push(card);
-    });
+      return card;
+    };
+
+    const markRec = () => {
+      rec = recommend(cur);
+      cardEls.forEach((card, i) => card.classList.toggle("rec", i === rec));
+    };
+
+    const renderAll = (delay0: number) => {
+      list.textContent = "";
+      list.classList.toggle("four", cur.length >= 4);
+      cardEls = cur.map((c, i) => {
+        const card = buildCard(c, i, delay0 + i * 0.075);
+        list.appendChild(card);
+        return card;
+      });
+      markRec();
+    };
+
+    // ---- reroll / skip / banish (charges per run, shown on the buttons)
+    const acts: Partial<Record<LevelUpAction, { b: HTMLButtonElement; n: HTMLElement; label: HTMLElement; cap: HTMLElement }>> = {};
+    const action = (a: LevelUpAction, label: string, cap: string, fn: () => void) => {
+      const b = el("button", "lu-act " + a, foot);
+      b.type = "button";
+      img("lu-act-ico", b, luIcon(a as LevelUpGlyph, 64));
+      const t = el("span", "lu-act-txt", b);
+      const l = el("b", "lu-act-label", t, label);
+      const c = el("small", "lu-act-cap", t, cap);
+      const n = el("span", "lu-act-n", b);
+      acts[a] = { b, n, label: l, cap: c };
+      onTap(b, (_e, downAt) => {
+        if (picked || busy || !tapOk(downAt)) return;
+        fn();
+      });
+    };
+    const deny = (a: LevelUpAction) => {
+      G.audio.sfx("deny");
+      const r = acts[a];
+      if (r) pulse(r.b, "shake");
+    };
+    const syncActs = () => {
+      for (const a of ["reroll", "skip", "banish"] as const) {
+        const r = acts[a];
+        if (!r) continue;
+        const n = ws.charges[a];
+        r.n.textContent = String(n);
+        r.b.classList.toggle("empty", n <= 0 && !(a === "banish" && banishing));
+        r.b.setAttribute("aria-label", `${r.label.textContent} (เหลือ ${n} ครั้ง)`);
+      }
+    };
+
+    const setBanish = (on: boolean) => {
+      banishing = on;
+      s.classList.toggle("banishing", on);
+      cardEls.forEach((card, i) => card.classList.toggle("no-banish", on && !ws.canBanish(cur[i])));
+      if (!picked) sub.textContent = on ? "แตะการ์ดที่จะตัดทิ้ง (ไม่ออกอีกในรอบนี้)" : SUB;
+      const r = acts.banish;
+      if (r) {
+        r.b.classList.toggle("armed", on);
+        r.label.textContent = on ? "ยกเลิก" : "ตัดทิ้ง";
+        r.cap.textContent = on ? "แตะการ์ด" : "ไม่ออกอีก";
+      }
+      syncActs();
+    };
+
+    // ---- decision timer (accumulated, clamped dt: a hidden tab does not burn it)
+    let left = total;
+    let lastSec = -1;
+    const resetTimer = () => {
+      if (total <= 0) return;
+      left = total;
+      lastSec = -1;
+      pulse(timer, "refill");
+    };
+
+    const pick = (i: number, auto = false) => {
+      if (picked || i < 0 || i >= cur.length) return;
+      if (banishing) setBanish(false);
+      picked = true;
+      s.classList.add("picked");
+      if (auto) {
+        s.classList.add("auto-picked");
+        sub.textContent = Meta.data.autoPick ? "ออโต้: เลือกการ์ดแนะนำให้" : "หมดเวลา! เลือกการ์ดแนะนำให้";
+      }
+      cardEls[i].classList.add("chosen");
+      G.audio.sfx("select");
+      const c = cur[i];
+      // an automatic pick lingers a moment so the player sees what was taken
+      this.later(auto ? 420 : 150, () => onPick(c));
+    };
+
+    const reroll = () => {
+      if (!ws.useCharge("reroll")) return deny("reroll");
+      if (banishing) setBanish(false);
+      G.audio.sfx("whoosh");
+      cur = ws.rollChoices(choices.length, { avoid: cur.map(choiceKey) });
+      renderAll(0);
+      resetTimer();
+      syncActs();
+    };
+
+    const skip = () => {
+      if (!onSkip) return;
+      if (!ws.useCharge("skip")) return deny("skip");
+      if (banishing) setBanish(false);
+      picked = true;
+      s.classList.add("picked", "skipped");
+      sub.textContent = `ข้าม! รับ ${formatNum(ws.skipGold())} ทอง`;
+      G.audio.sfx("coin");
+      syncActs();
+      this.later(220, () => onSkip());
+    };
+
+    const toggleBanish = () => {
+      if (banishing) {
+        setBanish(false);
+        G.audio.sfx("select");
+        return;
+      }
+      if (ws.charges.banish <= 0 || !cur.some((c) => ws.canBanish(c))) return deny("banish");
+      G.audio.sfx("select");
+      setBanish(true);
+    };
+
+    const doBanish = (i: number) => {
+      const c = cur[i];
+      const card = cardEls[i];
+      if (!ws.canBanish(c)) {
+        G.audio.sfx("deny");
+        pulse(card, "shake");
+        return;
+      }
+      if (!ws.useCharge("banish")) {
+        setBanish(false);
+        return deny("banish");
+      }
+      ws.banish(c);
+      setBanish(false);
+      busy = true;
+      card.classList.add("banished");
+      G.audio.sfx("whoosh");
+      this.later(300, () => {
+        busy = false;
+        // re-roll just this slot, never repeating a card still on screen
+        const others = cur.filter((_, k) => k !== i).map(choiceKey);
+        const rep = ws.rollChoices(1, { exclude: others, anyKind: true })[0];
+        if (rep) {
+          cur[i] = rep;
+          const nc = buildCard(rep, i, 0);
+          nc.classList.add("swap-in");
+          card.replaceWith(nc);
+          cardEls[i] = nc;
+        } else {
+          cur.splice(i, 1);
+          cardEls.splice(i, 1);
+          card.remove();
+          cardEls.forEach((ce, k) => {
+            const key = ce.querySelector(".card-key");
+            if (key) key.textContent = String(k + 1);
+          });
+          list.classList.toggle("four", cur.length >= 4);
+        }
+        markRec();
+        resetTimer();
+      });
+    };
+
+    action("reroll", "สุ่มใหม่", "การ์ดชุดใหม่", reroll);
+    if (onSkip) action("skip", "ข้าม", `+${formatNum(ws.skipGold())} ทอง`, skip);
+    action("banish", "ตัดทิ้ง", "ไม่ออกอีก", toggleBanish);
+    renderAll(0.1);
+    syncActs();
+
+    if (total > 0) {
+      const slot = this.rafs.length;
+      this.rafs.push(0);
+      let lastT = performance.now();
+      const tick = (now: number) => {
+        const dt = Math.min(0.25, Math.max(0, (now - lastT) / 1000));
+        lastT = now;
+        if (picked) return;
+        if (!busy && now - this.openedAt >= TAP_GUARD) left -= dt;
+        fill.style.transform = `scaleX(${Math.max(0, left / total).toFixed(4)})`;
+        const sec = Math.max(0, Math.ceil(left));
+        if (sec !== lastSec) {
+          const first = lastSec < 0;
+          lastSec = sec;
+          secEl.textContent = String(sec);
+          const hurry = sec <= 3;
+          timer.classList.toggle("hurry", hurry);
+          // soft tick for the last three seconds
+          if (hurry && sec > 0 && !first) G.audio.sfx("select", { vol: 0.35, pitch: 1.35 + (3 - sec) * 0.15 });
+        }
+        if (left <= 0) {
+          pick(rec, true);
+          return;
+        }
+        this.rafs[slot] = requestAnimationFrame(tick);
+      };
+      this.rafs[slot] = requestAnimationFrame(tick);
+    }
 
     this.onKey = (e) => {
+      if (picked) return;
+      const since = performance.now() - this.openedAt;
+      if (since < TAP_GUARD) return;
       const n = e.code.startsWith("Digit") ? parseInt(e.code.slice(5), 10) : e.code.startsWith("Numpad") ? parseInt(e.code.slice(6), 10) : NaN;
-      if (n >= 1 && n <= choices.length && !this.guarded()) pick(choices[n - 1], cardEls[n - 1]);
+      if (n >= 1 && n <= cur.length) {
+        if (busy) return;
+        if (banishing) doBanish(n - 1);
+        else pick(n - 1);
+        return;
+      }
+      if (busy) return;
+      switch (e.code) {
+        case "KeyR":
+          reroll();
+          break;
+        case "KeyB":
+          toggleBanish();
+          break;
+        case "Escape":
+          if (banishing) setBanish(false);
+          break;
+        // S / A are also movement keys: a key still being pressed for walking
+        // when the screen opened must not skip or toggle AUTO
+        case "KeyS":
+          if (since >= MOVE_KEY_GUARD) skip();
+          break;
+        case "KeyA":
+          if (since >= MOVE_KEY_GUARD) autoBtn.click();
+          break;
+      }
     };
   }
 
@@ -745,6 +1080,42 @@ export class Screens {
       doneAt = performance.now();
       s.classList.add("done");
       hint.textContent = "";
+      startAutoClose();
+    };
+
+    // the chest closes by itself after the reveal: quickly in AUTO mode, after
+    // a gentle countdown otherwise (shown on the button). Clamped dt: a hidden
+    // tab does not burn the countdown.
+    const startAutoClose = () => {
+      const auto = Meta.data.autoPick;
+      const total = (auto ? CHEST_AUTO_CLOSE : CHEST_IDLE_CLOSE) / 1000;
+      let left = total;
+      let lastSec = -1;
+      ok.classList.add("counting");
+      const bar = el("i", "chest-count-bar", ok);
+      const cnt = el("span", "chest-count", ok);
+      hint.classList.add("auto-close");
+      const slot = this.rafs.length;
+      this.rafs.push(0);
+      let lastT = performance.now();
+      const tick = (now: number) => {
+        if (closed) return;
+        left -= Math.min(0.25, Math.max(0, (now - lastT) / 1000));
+        lastT = now;
+        if (left <= 0) {
+          collect(true);
+          return;
+        }
+        bar.style.transform = `scaleX(${(left / total).toFixed(4)})`;
+        const sec = Math.ceil(left);
+        if (sec !== lastSec) {
+          lastSec = sec;
+          cnt.textContent = String(sec);
+          hint.textContent = auto ? "ออโต้: ปิดเองอัตโนมัติ" : `ปิดเองใน ${sec} วิ`;
+        }
+        this.rafs[slot] = requestAnimationFrame(tick);
+      };
+      this.rafs[slot] = requestAnimationFrame(tick);
     };
 
     // timeline: drop → shake → burst → reveal one by one → button
@@ -759,7 +1130,7 @@ export class Screens {
       if (!done && !this.guarded()) finish();
     });
     let closed = false;
-    const collect = () => {
+    const collect = (auto = false) => {
       if (closed) return;
       if (!done) {
         // the button is not tappable before the reveal ends (CSS); Enter /
@@ -767,13 +1138,13 @@ export class Screens {
         if (!this.guarded()) finish();
         return;
       }
-      if (!G.debug.autoplay && performance.now() - doneAt < 250) return;
+      if (!auto && !G.debug.autoplay && performance.now() - doneAt < 250) return;
       closed = true;
       G.audio.sfx("select");
       this.close();
       Flow.resume();
     };
-    onTap(ok, collect);
+    onTap(ok, () => collect());
     this.onKey = (e) => {
       if (e.code === "Enter" || e.code === "Space") collect();
     };
@@ -791,7 +1162,7 @@ export class Screens {
   showPause(): void {
     const s = this.open("pause");
     const panel = el("div", "panel pause-panel", s);
-    this.head(panel, "หยุดชั่วคราว");
+    this.autoToggle(this.head(panel, "หยุดชั่วคราว"));
 
     const stats = el("div", "pause-stats", panel);
     const stat = (icon: UiIconName, v: string) => {
