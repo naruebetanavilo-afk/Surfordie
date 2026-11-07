@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { kitToonMaterial } from "./ModelKit";
 import { BIG_PROPS, SMALL_PROPS, buildGrassTuft, type PropDef } from "./DecorProps";
+import { SNOW_BIG, SNOW_SMALL, buildSnowTuft } from "./DecorSnow";
 
 /**
  * Procedural, infinitely tiling scenery: grass tufts, flowers, mushrooms,
@@ -19,6 +20,12 @@ import { BIG_PROPS, SMALL_PROPS, buildGrassTuft, type PropDef } from "./DecorPro
  * The scatter is rebuilt only when the camera crosses a cell boundary and
  * always covers the conservative view rectangle + margin, so props spawn
  * outside the screen and never pop in view.
+ *
+ * Decor sets (`setTheme`): "meadow" (above) and "snow" (frozen grass tufts,
+ * snow lumps, frozen graves, snowy pines, ice crystals, drifts, cold
+ * lanterns; zones = snowfield / frozen graveyard / frozen grove). A set's
+ * meshes are built on first use and share the same three toon materials, so
+ * switching never compiles a shader; the inactive set is hidden (count 0).
  */
 
 const CELL = 4;
@@ -49,10 +56,78 @@ const SMALL_P: Record<Zone, number> = { 0: 0.5, 1: 0.55, 2: 0.6 };
 
 const GRASS_TINTS = ["#ffffff", "#e6f5c8", "#cfe8a8", "#f2ffd8", "#b9dc9a"].map((c) => new THREE.Color(c));
 
+/** everything that differs between decor themes (meadow values are the originals) */
+interface DecorSetDef {
+  tuft: () => THREE.BufferGeometry;
+  tuftTints: THREE.Color[];
+  /** tufts per cell: 1 + floor(rand * (zone 0 ? [0] : [1])) */
+  tufts: [number, number];
+  small: PropDef[];
+  big: PropDef[];
+  smallW: Record<Zone, number[]>;
+  bigW: Record<Zone, number[]>;
+  smallP: Record<Zone, number>;
+  bigP: Record<Zone, number>;
+  /** chance of a second small prop in zones 1/2 */
+  small2P: number;
+  /** drifting motes (fireflies / frost sprites): chance per cell, colour in zone 1 / zone 2 */
+  moteP: number;
+  moteColors: [string, string];
+}
+
+const DECOR_SETS: Record<string, DecorSetDef> = {
+  meadow: {
+    tuft: buildGrassTuft,
+    tuftTints: GRASS_TINTS,
+    tufts: [5, 4],
+    small: SMALL_PROPS,
+    big: BIG_PROPS,
+    smallW: SMALL_W,
+    bigW: BIG_W,
+    smallP: SMALL_P,
+    bigP: BIG_P,
+    small2P: 0.22,
+    moteP: 0.16,
+    moteColors: ["#b6ff7a", "#7affe8"],
+  },
+  snow: {
+    tuft: buildSnowTuft,
+    tuftTints: ["#ffffff", "#e8f0ff", "#dde8f6", "#f4f6ff", "#d4e2f0"].map((c) => new THREE.Color(c)),
+    tufts: [3, 3],
+    small: SNOW_SMALL,
+    big: SNOW_BIG,
+    smallW: {
+      //      lumps pebbles bones flowers candles shards icicles
+      0: [4, 2.2, 0.4, 1.2, 0, 0.8, 1.6],
+      1: [1.5, 1.4, 3, 0.8, 2.5, 0.5, 0.8],
+      2: [1.2, 1.2, 0.8, 2, 0.3, 2.4, 1.8],
+    },
+    bigW: {
+      //      grave cross pine deadPine fence lantern crystal drift
+      0: [0.3, 0.3, 1.5, 1.1, 1.0, 0.4, 0.7, 1.4],
+      1: [5, 3.2, 0.4, 0.9, 1.5, 1.4, 0.3, 0.7],
+      2: [0.4, 0.3, 3.6, 2.0, 0.5, 0.6, 1.6, 1.0],
+    },
+    smallP: { 0: 0.45, 1: 0.55, 2: 0.55 },
+    bigP: { 0: 0.1, 1: 0.24, 2: 0.19 },
+    small2P: 0.18,
+    moteP: 0.12,
+    moteColors: ["#9fe6ff", "#c8f4ff"],
+  },
+};
+
 interface Layer {
   mesh: THREE.InstancedMesh;
   n: number;
   cap: number;
+}
+
+/** the built meshes of one decor set */
+interface DecorSet {
+  def: DecorSetDef;
+  grass: Layer;
+  small: PropLayer;
+  big: PropLayer;
 }
 
 /** a prop layer: one InstancedMesh per variant, all sharing one material */
@@ -80,6 +155,12 @@ export class Decor {
   private grass: Layer;
   private small: PropLayer;
   private big: PropLayer;
+  /** active decor set + every set built so far (lazily) */
+  private set: DecorSet;
+  private sets = new Map<string, DecorSet>();
+  private readonly grassMat: THREE.Material;
+  private readonly smallMat: THREE.Material;
+  private readonly bigMat: THREE.Material;
   private glow: THREE.InstancedMesh;
   private glowMode: THREE.InstancedBufferAttribute;
   private glowN = 0;
@@ -98,16 +179,14 @@ export class Decor {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
-    // grass: single geometry, wind sway, tinted per instance
-    const grassMesh = new THREE.InstancedMesh(
-      buildGrassTuft(),
-      kitToonMaterial({ wind: 0.16, time: this.time }),
-      MAX_GRASS,
-    );
-    this.grass = this.initLayer(grassMesh, MAX_GRASS);
-
-    this.small = this.makePropLayer(SMALL_PROPS, MAX_SMALL, 0.05, false);
-    this.big = this.makePropLayer(BIG_PROPS, MAX_BIG, 0.012, true);
+    // one toon material per layer, shared by every decor set (one program each)
+    this.grassMat = kitToonMaterial({ wind: 0.16, time: this.time });
+    this.smallMat = kitToonMaterial({ wind: 0.05, time: this.time });
+    this.bigMat = kitToonMaterial({ wind: 0.012, time: this.time });
+    this.set = this.buildSet("meadow");
+    this.grass = this.set.grass;
+    this.small = this.set.small;
+    this.big = this.set.big;
 
     // additive glows (lantern halos, light pools, candle flames, fireflies)
     const glowGeo = new THREE.PlaneGeometry(1, 1);
@@ -138,8 +217,41 @@ export class Decor {
     return { mesh: this.initMesh(mesh), n: 0, cap };
   }
 
-  private makePropLayer(props: PropDef[], cap: number, wind: number, big: boolean): PropLayer {
-    const material = kitToonMaterial({ wind, time: this.time });
+  /** build the meshes of a decor set (hidden until the next rebuild fills them) */
+  private buildSet(id: string): DecorSet {
+    const def = DECOR_SETS[id] ?? DECOR_SETS.meadow;
+    // grass: single geometry, wind sway, tinted per instance
+    const grass = this.initLayer(new THREE.InstancedMesh(def.tuft(), this.grassMat, MAX_GRASS), MAX_GRASS);
+    const set: DecorSet = {
+      def,
+      grass,
+      small: this.makePropLayer(def.small, MAX_SMALL, this.smallMat, false),
+      big: this.makePropLayer(def.big, MAX_BIG, this.bigMat, true),
+    };
+    this.sets.set(id, set);
+    return set;
+  }
+
+  /**
+   * Switch the decor set ("meadow" | "snow"). Builds it on first use, hides
+   * the previous set and forces a full rebuild of the scatter.
+   */
+  setTheme(id: string): void {
+    const key = DECOR_SETS[id] ? id : "meadow";
+    const next = this.sets.get(key) ?? this.buildSet(key);
+    if (next === this.set) return;
+    for (const mesh of [this.grass.mesh, ...this.small.meshes, ...this.big.meshes]) {
+      mesh.count = 0;
+      mesh.visible = false;
+    }
+    this.set = next;
+    this.grass = next.grass;
+    this.small = next.small;
+    this.big = next.big;
+    this.lastCx = this.lastCz = 1e9;
+  }
+
+  private makePropLayer(props: PropDef[], cap: number, material: THREE.Material, big: boolean): PropLayer {
     // every variant can take the whole layer budget (zones can be dominated by one prop)
     const meshes = props.map((p) => this.initMesh(new THREE.InstancedMesh(p.build(), material, cap)));
     return {
@@ -321,6 +433,7 @@ export class Decor {
     }
     this.glowN = 0;
 
+    const sd = this.set.def;
     for (let gz = ccz - rz; gz <= ccz + rz; gz++) {
       for (let gx = ccx - rx; gx <= ccx + rx; gx++) {
         const zone = this.zone(gx, gz);
@@ -329,7 +442,7 @@ export class Decor {
         const nearOrigin = Math.hypot(ox + CELL / 2, oz + CELL / 2) < CLEAR_R;
 
         // grass tufts (sometimes in small clumps)
-        const tufts = 1 + Math.floor(this.hash(gx, gz, 1) * (zone === 0 ? 5 : 4));
+        const tufts = 1 + Math.floor(this.hash(gx, gz, 1) * (zone === 0 ? sd.tufts[0] : sd.tufts[1]));
         for (let k = 0; k < tufts && grass.n < grass.cap; k++) {
           const x = ox + this.hash(gx, gz, 10 + k) * CELL;
           const z = oz + this.hash(gx, gz, 20 + k) * CELL;
@@ -340,38 +453,38 @@ export class Decor {
           this.s.set(sc, sc * (0.8 + this.hash(gx, gz, 45 + k) * 0.5), sc);
           this.m.compose(this.p, this.q, this.s);
           grass.mesh.setMatrixAt(grass.n, this.m);
-          grass.mesh.setColorAt(grass.n, GRASS_TINTS[Math.floor(this.hash(gx, gz, 50 + k) * GRASS_TINTS.length)]);
+          grass.mesh.setColorAt(grass.n, sd.tuftTints[Math.floor(this.hash(gx, gz, 50 + k) * sd.tuftTints.length)]);
           grass.n++;
         }
 
         // small prop
-        if (this.hash(gx, gz, 2) < SMALL_P[zone] * (nearOrigin ? 0.4 : 1)) {
-          const v = this.pick(SMALL_W[zone], this.hash(gx, gz, 3));
+        if (this.hash(gx, gz, 2) < sd.smallP[zone] * (nearOrigin ? 0.4 : 1)) {
+          const v = this.pick(sd.smallW[zone], this.hash(gx, gz, 3));
           const x = ox + (0.1 + this.hash(gx, gz, 4) * 0.8) * CELL;
           const z = oz + (0.1 + this.hash(gx, gz, 5) * 0.8) * CELL;
           this.placeProp(this.small, v, x, z, gx, gz, 100);
         }
         // occasional second small prop in lush zones
-        if (zone !== 0 && this.hash(gx, gz, 6) < 0.22) {
-          const v = this.pick(SMALL_W[zone], this.hash(gx, gz, 7));
+        if (zone !== 0 && this.hash(gx, gz, 6) < sd.small2P) {
+          const v = this.pick(sd.smallW[zone], this.hash(gx, gz, 7));
           const x = ox + (0.1 + this.hash(gx, gz, 8) * 0.8) * CELL;
           const z = oz + (0.1 + this.hash(gx, gz, 9) * 0.8) * CELL;
           this.placeProp(this.small, v, x, z, gx, gz, 200);
         }
 
         // big prop (one per cell max, kept inside the cell so they never overlap)
-        if (!nearOrigin && this.hash(gx, gz, 60) < BIG_P[zone]) {
-          const v = this.pick(BIG_W[zone], this.hash(gx, gz, 61));
+        if (!nearOrigin && this.hash(gx, gz, 60) < sd.bigP[zone]) {
+          const v = this.pick(sd.bigW[zone], this.hash(gx, gz, 61));
           const x = ox + (0.2 + this.hash(gx, gz, 62) * 0.6) * CELL;
           const z = oz + (0.2 + this.hash(gx, gz, 63) * 0.6) * CELL;
           this.placeProp(this.big, v, x, z, gx, gz, 300);
         }
 
         // fireflies in spooky zones
-        if (zone !== 0 && this.hash(gx, gz, 70) < 0.16) {
+        if (zone !== 0 && this.hash(gx, gz, 70) < sd.moteP) {
           const x = ox + this.hash(gx, gz, 71) * CELL;
           const z = oz + this.hash(gx, gz, 72) * CELL;
-          const col = zone === 1 ? "#b6ff7a" : "#7affe8";
+          const col = zone === 1 ? sd.moteColors[0] : sd.moteColors[1];
           this.pushGlow(x, 0.7 + this.hash(gx, gz, 73) * 0.7, z, 0.32, col, 2);
         }
       }
@@ -391,18 +504,22 @@ export class Decor {
   }
 
   dispose(): void {
-    this.scene.remove(this.grass.mesh);
-    this.grass.mesh.geometry.dispose();
-    (this.grass.mesh.material as THREE.Material).dispose();
-    this.grass.mesh.dispose();
-    for (const layer of [this.small, this.big]) {
-      for (const mesh of layer.meshes) {
-        this.scene.remove(mesh);
-        mesh.geometry.dispose();
-        mesh.dispose();
+    for (const set of this.sets.values()) {
+      this.scene.remove(set.grass.mesh);
+      set.grass.mesh.geometry.dispose();
+      set.grass.mesh.dispose();
+      for (const layer of [set.small, set.big]) {
+        for (const mesh of layer.meshes) {
+          this.scene.remove(mesh);
+          mesh.geometry.dispose();
+          mesh.dispose();
+        }
       }
-      layer.material.dispose();
     }
+    this.sets.clear();
+    this.grassMat.dispose();
+    this.smallMat.dispose();
+    this.bigMat.dispose();
     this.scene.remove(this.glow);
     this.glow.geometry.dispose();
     (this.glow.material as THREE.Material).dispose();

@@ -5,7 +5,8 @@ import { resetHostile, warmUpHostile } from "../enemies/hostile";
 import { resetBosses, setBossesPassive } from "../enemies/bosses";
 import { startStampede, MODE_STAMPEDE } from "../enemies/ai";
 import { type Phase, type RunEvent } from "./timeline";
-import { stageById } from "../stages/stages";
+import { stageById, debugStageId } from "../stages/stages";
+import { Weather } from "../world/Weather";
 
 /** length of a full run in seconds; surviving this long = victory */
 export const RUN_LENGTH = 10 * 60;
@@ -61,6 +62,9 @@ export class Director {
 
   constructor() {
     this.cache = [];
+    // ?stage=<id> picks the stage at boot (the world follows G.stageId, menu included)
+    const dbg = debugStageId();
+    if (dbg) G.stageId = dbg;
     this.loadStage();
     G.events.on("bossKilled", () => {
       this.bossAlive = Math.max(0, this.bossAlive - 1);
@@ -86,7 +90,11 @@ export class Director {
   }
 
   reset(): void {
+    // the debug override wins over the menu's stage choice
+    const dbg = debugStageId();
+    if (dbg) G.stageId = dbg;
     this.loadStage();
+    Weather.reset();
     this.acc = 0;
     this.quiet = false;
     this.lineup.length = 0;

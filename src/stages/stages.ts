@@ -31,8 +31,36 @@ export const STAGES: StageDef[] = [
     phases: PHASES,
     events: EVENTS,
   },
+  {
+    id: "snow",
+    name: "สุสานหิมะ",
+    desc: "ป่าช้าเยือกแข็งกลางพายุหิมะ ฝูงหมาป่าน้ำแข็งและพญาเหมันต์รออยู่",
+    color: "#8fd8ff",
+    theme: "snow",
+    phases: PHASES,
+    events: EVENTS,
+    requires: "meadow",
+  },
 ];
 
 export function stageById(id: string): StageDef {
   return STAGES.find((s) => s.id === id) ?? STAGES[0];
+}
+
+let dbgStage: string | null | undefined;
+/**
+ * Debug URL override `?stage=<id>` (only known ids), read once. The Director
+ * applies it to `G.stageId` at boot and on every run start, so it wins over
+ * the menu's stage choice.
+ */
+export function debugStageId(): string | null {
+  if (dbgStage !== undefined) return dbgStage;
+  dbgStage = null;
+  try {
+    const id = new URLSearchParams(location.search).get("stage");
+    if (id && STAGES.some((s) => s.id === id)) dbgStage = id;
+  } catch {
+    dbgStage = null;
+  }
+  return dbgStage;
 }

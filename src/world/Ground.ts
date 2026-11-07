@@ -11,6 +11,8 @@ export interface GroundUniforms {
   uView: { value: THREE.Vector2 };
   /** per-channel multiplier cancelling character-only lights on the ground */
   uLightComp?: { value: THREE.Vector3 };
+  /** ground pattern: 0 = meadow grass, 1 = snow (see themes.ts) */
+  uGround?: { value: number };
 }
 
 /** sRGB hex -> GLSL vec3 literal in linear space */
@@ -20,11 +22,16 @@ function lin(hex: string): string {
 }
 
 /**
- * Infinite stylised grass field: a soft 45-degree checkerboard of saturated
- * greens, clumpy value-noise variation, worn patches, soft tile-border AO and
- * a world-space "spotlight" falloff that keeps the area around the hero bright
- * while the edges (where enemies spawn) sink into a cool haze.
- * Everything is computed from world position so the plane can follow the camera.
+ * Infinite stylised ground. Pattern `uGround`:
+ *  0 = grass field: a soft 45-degree checkerboard of saturated greens, clumpy
+ *      value-noise variation, worn patches, soft tile-border AO
+ *  1 = snow field: icy blue-white checker, wind-swept drift streaks, frozen
+ *      ice patches with cracks and twinkling frost glints
+ * plus a world-space "spotlight" falloff that keeps the area around the hero
+ * bright while the edges (where enemies spawn) sink into a cool haze.
+ * One program for every theme (a uniform branch), so switching stages never
+ * compiles a shader. Everything is computed from world position so the plane
+ * can follow the camera.
  */
 export function createGround(uniforms: GroundUniforms): THREE.Mesh {
   const geo = new THREE.PlaneGeometry(260, 260, 1, 1);
@@ -35,6 +42,7 @@ export function createGround(uniforms: GroundUniforms): THREE.Mesh {
     shader.uniforms.uCenter = uniforms.uCenter;
     shader.uniforms.uView = uniforms.uView;
     shader.uniforms.uLightComp = uniforms.uLightComp ?? { value: new THREE.Vector3(1, 1, 1) };
+    shader.uniforms.uGround = uniforms.uGround ?? { value: 0 };
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vWPos;")
       .replace(
@@ -50,6 +58,7 @@ uniform float uTime;
 uniform vec2 uCenter;
 uniform vec2 uView;
 uniform vec3 uLightComp;
+uniform float uGround;
 float gHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float gNoise(vec2 p){
   vec2 i = floor(p); vec2 f = fract(p);
@@ -60,7 +69,7 @@ float gNoise(vec2 p){
       .replace(
         "#include <color_fragment>",
         `#include <color_fragment>
-{
+if (uGround < 0.5) {
   vec2 p = vWPos.xz;
   // soft diamond checker: product of two clamped sines (45 degree grid, tile ~3.1u)
   vec2 r = vec2(p.x + p.y, p.y - p.x) * 0.70710678;
@@ -89,6 +98,55 @@ float gNoise(vec2 p){
   q.y *= q.y > 0.0 ? 1.6 : 0.95;      // near side (+z) is shorter on screen
   float dist = length(q);
   col *= mix(1.0, 0.74, smoothstep(0.36, 1.08, dist));
+
+  diffuseColor.rgb = col * uLightComp;
+} else {
+  vec2 p = vWPos.xz;
+  // same diamond checker as the meadow, in packed-snow tones
+  vec2 r = vec2(p.x + p.y, p.y - p.x) * 0.70710678;
+  vec2 sn = sin(r * (3.14159265 / 3.1));
+  vec2 sm = clamp(sn * 4.0, -1.0, 1.0);
+  float ch = 0.5 + 0.5 * sm.x * sm.y;
+
+  float nL = gNoise(p * 0.06 + 3.1);
+  float nM = gNoise(p * 0.5 + 7.7);
+  float nS = gNoise(p * 2.7);
+  vec3 lightCol = mix(${lin("#d9e1ee")}, ${lin("#dfe3f0")}, nL);
+  vec3 darkCol  = mix(${lin("#b7c6dc")}, ${lin("#bfc4df")}, nL);
+  vec3 col = mix(darkCol, lightCol, ch);
+  col *= 0.94 + nM * 0.09 + (nS - 0.5) * 0.05;
+
+  // soft blue occlusion along the tile borders
+  float bd = min(abs(sn.x), abs(sn.y));
+  col *= mix(vec3(0.9, 0.93, 0.98), vec3(1.0), smoothstep(0.0, 0.45, bd));
+
+  // wind-swept drift streaks (stretched noise, slightly brighter)
+  float drift = gNoise(vec2(p.x * 0.22 + p.y * 0.08, p.y * 0.9 - p.x * 0.3) + 23.0);
+  col *= 0.97 + smoothstep(0.55, 0.9, drift) * 0.07;
+
+  // frozen ice patches: smooth blue sheets with a darker rim and cracks
+  float iceN = gNoise(p * 0.075 + 41.0) + (nM - 0.5) * 0.12;
+  float ice = smoothstep(0.6, 0.66, iceN);
+  float iceRim = ice * (1.0 - smoothstep(0.66, 0.74, iceN));
+  vec3 iceCol = mix(${lin("#97bfe4")}, ${lin("#b9d9f2")}, nS);
+  float crack = 1.0 - smoothstep(0.0, 0.035, abs(gNoise(p * 1.3 + 5.0) - 0.5));
+  iceCol *= 1.0 - crack * 0.22;
+  col = mix(col, iceCol, ice * 0.8);
+  col *= 1.0 - iceRim * 0.12;
+
+  // frost glints: sparse sparkles that twinkle
+  vec2 gq = p * 2.6;
+  vec2 gc = floor(gq);
+  float gh = gHash(gc);
+  float gd = length(fract(gq) - 0.5 - (vec2(gHash(gc + 3.7), gHash(gc + 9.1)) - 0.5) * 0.6);
+  float glint = step(0.94, gh) * (1.0 - smoothstep(0.02, 0.09, gd)) * max(0.0, sin(uTime * 2.3 + gh * 60.0));
+  col += glint * 0.32;
+
+  // spotlight falloff into a cold blue dusk
+  vec2 q = (p - uCenter) / uView;
+  q.y *= q.y > 0.0 ? 1.6 : 0.95;
+  float dist = length(q);
+  col *= mix(vec3(1.0), vec3(0.66, 0.72, 0.86), smoothstep(0.36, 1.08, dist));
 
   diffuseColor.rgb = col * uLightComp;
 }`,
